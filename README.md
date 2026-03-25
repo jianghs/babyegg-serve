@@ -76,12 +76,19 @@ rust-platform-template/
 {
   "code": 400,
   "error_code": "INVALID_PARAM",
-  "message": "name cannot be empty"
+  "message": "name cannot be empty",
+  "details": [
+    {
+      "field": "name",
+      "reason": "required"
+    }
+  ]
 }
 ```
 
 说明：错误 `message` 会随 `DEFAULT_LOCALE` 切换为中文或英文。
 `error_code` 为稳定机器码（示例：`USER_EMAIL_EXISTS`、`AUTH_INVALID_TOKEN`、`NOT_FOUND`）。
+`details` 为可选字段，主要用于参数校验失败的结构化信息。
 
 接口列表：
 

@@ -7,6 +7,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::error_code::ErrorCode;
+use crate::validation::ValidationDetail;
 
 /// 通用应用错误。
 /// 业务项目可在自己的 crate 中继续扩展，或者包装成更细的错误类型。
@@ -16,6 +17,8 @@ pub enum AppError {
     BadRequest(String),
     #[error("{1}")]
     BadRequestWithCode(ErrorCode, String),
+    #[error("{1}")]
+    BadRequestWithDetails(ErrorCode, String, Vec<ValidationDetail>),
 
     #[error("not found")]
     NotFound,
@@ -37,17 +40,21 @@ struct ErrorBody {
     code: i32,
     error_code: String,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<Vec<ValidationDetail>>,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = self.status_code();
         let error_code = self.error_code();
+        let details = self.validation_details().map(|d| d.to_vec());
 
         let body = Json(ErrorBody {
             code: status.as_u16() as i32,
             error_code: error_code.to_string(),
             message: self.to_string(),
+            details,
         });
 
         (status, body).into_response()
@@ -57,7 +64,9 @@ impl IntoResponse for AppError {
 impl AppError {
     pub fn status_code(&self) -> StatusCode {
         match self {
-            AppError::BadRequest(_) | AppError::BadRequestWithCode(_, _) => StatusCode::BAD_REQUEST,
+            AppError::BadRequest(_)
+            | AppError::BadRequestWithCode(_, _)
+            | AppError::BadRequestWithDetails(_, _, _) => StatusCode::BAD_REQUEST,
             AppError::NotFound
             | AppError::NotFoundWithMessage(_)
             | AppError::NotFoundWithCode(_, _) => StatusCode::NOT_FOUND,
@@ -71,10 +80,18 @@ impl AppError {
         match self {
             AppError::BadRequest(_) => ErrorCode::InvalidParam,
             AppError::BadRequestWithCode(code, _) => *code,
+            AppError::BadRequestWithDetails(code, _, _) => *code,
             AppError::NotFound | AppError::NotFoundWithMessage(_) => ErrorCode::NotFound,
             AppError::NotFoundWithCode(code, _) => *code,
             AppError::Internal | AppError::InternalWithMessage(_) => ErrorCode::InternalError,
             AppError::InternalWithCode(code, _) => *code,
+        }
+    }
+
+    pub fn validation_details(&self) -> Option<&[ValidationDetail]> {
+        match self {
+            AppError::BadRequestWithDetails(_, _, details) => Some(details.as_slice()),
+            _ => None,
         }
     }
 }

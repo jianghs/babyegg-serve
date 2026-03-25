@@ -1,5 +1,5 @@
 use app_foundation::i18n::{translate, MessageKey};
-use app_foundation::{ApiResponse, AppError, ErrorCode};
+use app_foundation::{ApiResponse, AppError, ErrorCode, ValidationDetail};
 use axum::{extract::State, Json};
 use uuid::Uuid;
 
@@ -21,16 +21,18 @@ pub fn parse_bearer_user_id(
 ) -> Result<Uuid, AppError> {
     let locale = state.config.base.default_locale;
 
-    let auth_header = authorization.ok_or(AppError::BadRequestWithCode(
+    let auth_header = authorization.ok_or(AppError::BadRequestWithDetails(
         ErrorCode::AuthMissingAuthorizationHeader,
         translate(locale, MessageKey::MissingAuthorizationHeader).to_string(),
+        vec![ValidationDetail::new("authorization", "required")],
     ))?;
 
     let token = auth_header
         .strip_prefix("Bearer ")
-        .ok_or(AppError::BadRequestWithCode(
+        .ok_or(AppError::BadRequestWithDetails(
             ErrorCode::AuthInvalidAuthorizationHeader,
             translate(locale, MessageKey::InvalidAuthorizationHeader).to_string(),
+            vec![ValidationDetail::new("authorization", "invalid_format")],
         ))?;
 
     let claims = jwt::verify_token(token, &state.config.jwt_secret).map_err(|_| {

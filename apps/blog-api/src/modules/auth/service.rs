@@ -1,5 +1,5 @@
 use app_foundation::i18n::{translate, MessageKey};
-use app_foundation::{AppError, ErrorCode};
+use app_foundation::{AppError, ErrorCode, ValidationDetail};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
@@ -23,23 +23,26 @@ pub async fn register(state: &AppState, req: RegisterRequest) -> Result<UserResp
     let locale = state.config.base.default_locale;
 
     if req.name.trim().is_empty() {
-        return Err(AppError::BadRequestWithCode(
+        return Err(AppError::BadRequestWithDetails(
             ErrorCode::UserNameEmpty,
             translate(locale, MessageKey::NameCannotBeEmpty).to_string(),
+            vec![ValidationDetail::new("name", "required")],
         ));
     }
 
     if req.email.trim().is_empty() {
-        return Err(AppError::BadRequestWithCode(
+        return Err(AppError::BadRequestWithDetails(
             ErrorCode::UserEmailEmpty,
             translate(locale, MessageKey::EmailCannotBeEmpty).to_string(),
+            vec![ValidationDetail::new("email", "required")],
         ));
     }
 
     if req.password.len() < 6 {
-        return Err(AppError::BadRequestWithCode(
+        return Err(AppError::BadRequestWithDetails(
             ErrorCode::UserPasswordTooShort,
             translate(locale, MessageKey::PasswordTooShort).to_string(),
+            vec![ValidationDetail::new("password", "min_length_6")],
         ));
     }
 
@@ -52,9 +55,10 @@ pub async fn register(state: &AppState, req: RegisterRequest) -> Result<UserResp
         })?;
 
     if existing.is_some() {
-        return Err(AppError::BadRequestWithCode(
+        return Err(AppError::BadRequestWithDetails(
             ErrorCode::UserEmailExists,
             translate(locale, MessageKey::EmailAlreadyExists).to_string(),
+            vec![ValidationDetail::new("email", "already_exists")],
         ));
     }
 
@@ -84,16 +88,18 @@ pub async fn login(state: &AppState, req: LoginRequest) -> Result<LoginResponse,
     let locale = state.config.base.default_locale;
 
     if req.email.trim().is_empty() {
-        return Err(AppError::BadRequestWithCode(
+        return Err(AppError::BadRequestWithDetails(
             ErrorCode::UserEmailEmpty,
             translate(locale, MessageKey::EmailCannotBeEmpty).to_string(),
+            vec![ValidationDetail::new("email", "required")],
         ));
     }
 
     if req.password.is_empty() {
-        return Err(AppError::BadRequestWithCode(
+        return Err(AppError::BadRequestWithDetails(
             ErrorCode::UserPasswordEmpty,
             translate(locale, MessageKey::PasswordCannotBeEmpty).to_string(),
+            vec![ValidationDetail::new("password", "required")],
         ));
     }
 
