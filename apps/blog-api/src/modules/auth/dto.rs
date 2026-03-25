@@ -1,5 +1,5 @@
 use app_foundation::i18n::{translate, MessageKey};
-use app_foundation::{AppError, ErrorCode, Locale, ValidationDetail};
+use app_foundation::{AppError, ErrorCode, Locale, ValidationDetail, ValidationReason};
 use serde::{Deserialize, Serialize};
 
 use crate::modules::user::model::UserResponse;
@@ -18,7 +18,7 @@ impl RegisterRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::UserNameEmpty,
                 translate(locale, MessageKey::NameCannotBeEmpty).to_string(),
-                vec![ValidationDetail::new("name", "required")],
+                vec![ValidationDetail::new("name", ValidationReason::Required)],
             ));
         }
 
@@ -26,7 +26,7 @@ impl RegisterRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::UserEmailEmpty,
                 translate(locale, MessageKey::EmailCannotBeEmpty).to_string(),
-                vec![ValidationDetail::new("email", "required")],
+                vec![ValidationDetail::new("email", ValidationReason::Required)],
             ));
         }
 
@@ -34,7 +34,10 @@ impl RegisterRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::UserPasswordTooShort,
                 translate(locale, MessageKey::PasswordTooShort).to_string(),
-                vec![ValidationDetail::new("password", "min_length_6")],
+                vec![ValidationDetail::new(
+                    "password",
+                    ValidationReason::MinLength6,
+                )],
             ));
         }
 
@@ -55,7 +58,7 @@ impl LoginRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::UserEmailEmpty,
                 translate(locale, MessageKey::EmailCannotBeEmpty).to_string(),
-                vec![ValidationDetail::new("email", "required")],
+                vec![ValidationDetail::new("email", ValidationReason::Required)],
             ));
         }
 
@@ -63,7 +66,10 @@ impl LoginRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::UserPasswordEmpty,
                 translate(locale, MessageKey::PasswordCannotBeEmpty).to_string(),
-                vec![ValidationDetail::new("password", "required")],
+                vec![ValidationDetail::new(
+                    "password",
+                    ValidationReason::Required,
+                )],
             ));
         }
 
@@ -83,7 +89,10 @@ impl RefreshRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::AuthMissingRefreshToken,
                 translate(locale, MessageKey::MissingRefreshToken).to_string(),
-                vec![ValidationDetail::new("refresh_token", "required")],
+                vec![ValidationDetail::new(
+                    "refresh_token",
+                    ValidationReason::Required,
+                )],
             ));
         }
 
@@ -103,7 +112,10 @@ impl LogoutRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::AuthMissingRefreshToken,
                 translate(locale, MessageKey::MissingRefreshToken).to_string(),
-                vec![ValidationDetail::new("refresh_token", "required")],
+                vec![ValidationDetail::new(
+                    "refresh_token",
+                    ValidationReason::Required,
+                )],
             ));
         }
 

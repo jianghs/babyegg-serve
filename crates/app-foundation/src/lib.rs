@@ -17,4 +17,4 @@ pub use error_code::ErrorCode;
 pub use locale::Locale;
 pub use query::{ListQuery, NormalizedListQuery, SortOrder};
 pub use response::{ApiResponse, PageResponse};
-pub use validation::ValidationDetail;
+pub use validation::{ValidationDetail, ValidationReason};

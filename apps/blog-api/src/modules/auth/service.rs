@@ -7,7 +7,7 @@ use argon2::{
 };
 
 use crate::{
-    db::{auth_repo, user_repo},
+    db::{auth_repo, rbac_repo, user_repo},
     modules::{
         auth::{
             dto::{
@@ -58,6 +58,19 @@ pub async fn register(state: &AppState, req: RegisterRequest) -> Result<UserResp
                 translate(locale, MessageKey::InternalServerError).to_string(),
             )
         })?;
+
+    let assigned = rbac_repo::assign_role_by_key(&state.db, user.id, "user")
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?;
+    if !assigned {
+        return Err(AppError::InternalWithMessage(
+            translate(locale, MessageKey::InternalServerError).to_string(),
+        ));
+    }
 
     Ok(user.into())
 }
@@ -183,10 +196,44 @@ async fn issue_token_pair(
     user_id: uuid::Uuid,
 ) -> Result<TokenResponse, AppError> {
     let locale = state.config.base.default_locale;
+    let (mut roles, mut scopes) = rbac_repo::get_user_roles_and_scopes(&state.db, user_id)
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?;
+
+    // 兼容历史数据：如果用户还没有角色，补上默认 user 角色后重查。
+    if roles.is_empty() {
+        let assigned = rbac_repo::assign_role_by_key(&state.db, user_id, "user")
+            .await
+            .map_err(|_| {
+                AppError::InternalWithMessage(
+                    translate(locale, MessageKey::InternalServerError).to_string(),
+                )
+            })?;
+        if !assigned {
+            return Err(AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            ));
+        }
+
+        (roles, scopes) = rbac_repo::get_user_roles_and_scopes(&state.db, user_id)
+            .await
+            .map_err(|_| {
+                AppError::InternalWithMessage(
+                    translate(locale, MessageKey::InternalServerError).to_string(),
+                )
+            })?;
+    }
+
     let access_token = jwt::create_token(
         user_id,
         &state.config.jwt_secret,
         state.config.jwt_expire_seconds,
+        roles,
+        scopes,
     )
     .map_err(|_| {
         AppError::InternalWithMessage(

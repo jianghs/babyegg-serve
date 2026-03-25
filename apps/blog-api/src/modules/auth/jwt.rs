@@ -24,6 +24,8 @@ pub fn create_token(
     user_id: Uuid,
     secret: &str,
     expire_seconds: i64,
+    roles: Vec<String>,
+    scopes: Vec<String>,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     let now = OffsetDateTime::now_utc().unix_timestamp();
 
@@ -31,8 +33,8 @@ pub fn create_token(
         sub: user_id.to_string(),
         iat: now as usize,
         exp: (now + expire_seconds) as usize,
-        roles: vec!["user".to_string()],
-        scopes: vec!["*".to_string()],
+        roles,
+        scopes,
     };
 
     encode(

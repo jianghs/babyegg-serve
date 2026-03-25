@@ -1,7 +1,9 @@
 use serde::Deserialize;
 
 use app_foundation::i18n::{translate, MessageKey};
-use app_foundation::{AppError, ErrorCode, ListQuery, Locale, PageResponse, ValidationDetail};
+use app_foundation::{
+    AppError, ErrorCode, ListQuery, Locale, PageResponse, ValidationDetail, ValidationReason,
+};
 
 use crate::modules::user::model::UserResponse;
 
@@ -20,7 +22,7 @@ impl CreateUserRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::UserNameEmpty,
                 translate(locale, MessageKey::NameCannotBeEmpty).to_string(),
-                vec![ValidationDetail::new("name", "required")],
+                vec![ValidationDetail::new("name", ValidationReason::Required)],
             ));
         }
 
@@ -28,7 +30,7 @@ impl CreateUserRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::UserEmailEmpty,
                 translate(locale, MessageKey::EmailCannotBeEmpty).to_string(),
-                vec![ValidationDetail::new("email", "required")],
+                vec![ValidationDetail::new("email", ValidationReason::Required)],
             ));
         }
 
@@ -36,7 +38,10 @@ impl CreateUserRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::UserPasswordTooShort,
                 translate(locale, MessageKey::PasswordTooShort).to_string(),
-                vec![ValidationDetail::new("password", "min_length_6")],
+                vec![ValidationDetail::new(
+                    "password",
+                    ValidationReason::MinLength6,
+                )],
             ));
         }
 
@@ -56,7 +61,7 @@ impl UpdateUserRequest {
             return Err(AppError::BadRequestWithDetails(
                 ErrorCode::UserNameEmpty,
                 translate(locale, MessageKey::NameCannotBeEmpty).to_string(),
-                vec![ValidationDetail::new("name", "required")],
+                vec![ValidationDetail::new("name", ValidationReason::Required)],
             ));
         }
 
