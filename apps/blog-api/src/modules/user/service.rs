@@ -1,7 +1,7 @@
 use app_foundation::{
     error::AppError,
     i18n::{translate, MessageKey},
-    PageResponse,
+    ErrorCode, PageResponse,
 };
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
@@ -27,7 +27,8 @@ pub async fn create_user(
     let locale = state.config.base.default_locale;
 
     if req.name.trim().is_empty() {
-        return Err(AppError::BadRequest(
+        return Err(AppError::BadRequestWithCode(
+            ErrorCode::UserNameEmpty,
             translate(
                 state.config.base.default_locale,
                 MessageKey::NameCannotBeEmpty,
@@ -37,7 +38,8 @@ pub async fn create_user(
     }
 
     if req.email.trim().is_empty() {
-        return Err(AppError::BadRequest(
+        return Err(AppError::BadRequestWithCode(
+            ErrorCode::UserEmailEmpty,
             translate(
                 state.config.base.default_locale,
                 MessageKey::EmailCannotBeEmpty,
@@ -47,7 +49,8 @@ pub async fn create_user(
     }
 
     if req.password.len() < 6 {
-        return Err(AppError::BadRequest(
+        return Err(AppError::BadRequestWithCode(
+            ErrorCode::UserPasswordTooShort,
             translate(
                 state.config.base.default_locale,
                 MessageKey::PasswordTooShort,
@@ -65,7 +68,8 @@ pub async fn create_user(
         })?;
 
     if existing.is_some() {
-        return Err(AppError::BadRequest(
+        return Err(AppError::BadRequestWithCode(
+            ErrorCode::UserEmailExists,
             translate(
                 state.config.base.default_locale,
                 MessageKey::EmailAlreadyExists,
@@ -112,7 +116,8 @@ pub async fn get_user(state: &AppState, id: Uuid) -> Result<UserResponse, AppErr
                 translate(locale, MessageKey::InternalServerError).to_string(),
             )
         })?
-        .ok_or(AppError::NotFoundWithMessage(
+        .ok_or(AppError::NotFoundWithCode(
+            ErrorCode::NotFound,
             translate(locale, MessageKey::NotFound).to_string(),
         ))?;
 
@@ -130,7 +135,8 @@ pub async fn me(state: &AppState, user_id: Uuid) -> Result<UserResponse, AppErro
                 translate(locale, MessageKey::InternalServerError).to_string(),
             )
         })?
-        .ok_or(AppError::NotFoundWithMessage(
+        .ok_or(AppError::NotFoundWithCode(
+            ErrorCode::NotFound,
             translate(locale, MessageKey::NotFound).to_string(),
         ))?;
 
@@ -177,7 +183,8 @@ pub async fn update_user(
     let locale = state.config.base.default_locale;
 
     if name.trim().is_empty() {
-        return Err(AppError::BadRequest(
+        return Err(AppError::BadRequestWithCode(
+            ErrorCode::UserNameEmpty,
             translate(
                 state.config.base.default_locale,
                 MessageKey::NameCannotBeEmpty,
@@ -193,7 +200,8 @@ pub async fn update_user(
                 translate(locale, MessageKey::InternalServerError).to_string(),
             )
         })?
-        .ok_or(AppError::NotFoundWithMessage(
+        .ok_or(AppError::NotFoundWithCode(
+            ErrorCode::NotFound,
             translate(locale, MessageKey::NotFound).to_string(),
         ))?;
 
@@ -211,7 +219,8 @@ pub async fn delete_user(state: &AppState, id: Uuid) -> Result<(), AppError> {
     })?;
 
     if !deleted {
-        return Err(AppError::NotFoundWithMessage(
+        return Err(AppError::NotFoundWithCode(
+            ErrorCode::NotFound,
             translate(locale, MessageKey::NotFound).to_string(),
         ));
     }

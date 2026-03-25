@@ -81,6 +81,7 @@ rust-platform-template/
 ```
 
 说明：错误 `message` 会随 `DEFAULT_LOCALE` 切换为中文或英文。
+`error_code` 为稳定机器码（示例：`USER_EMAIL_EXISTS`、`AUTH_INVALID_TOKEN`、`NOT_FOUND`）。
 
 接口列表：
 

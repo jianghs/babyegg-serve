@@ -14,16 +14,22 @@ use crate::error_code::ErrorCode;
 pub enum AppError {
     #[error("{0}")]
     BadRequest(String),
+    #[error("{1}")]
+    BadRequestWithCode(ErrorCode, String),
 
     #[error("not found")]
     NotFound,
     #[error("{0}")]
     NotFoundWithMessage(String),
+    #[error("{1}")]
+    NotFoundWithCode(ErrorCode, String),
 
     #[error("internal server error")]
     Internal,
     #[error("{0}")]
     InternalWithMessage(String),
+    #[error("{1}")]
+    InternalWithCode(ErrorCode, String),
 }
 
 #[derive(Debug, Serialize)]
@@ -51,19 +57,24 @@ impl IntoResponse for AppError {
 impl AppError {
     pub fn status_code(&self) -> StatusCode {
         match self {
-            AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
-            AppError::NotFound | AppError::NotFoundWithMessage(_) => StatusCode::NOT_FOUND,
-            AppError::Internal | AppError::InternalWithMessage(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            AppError::BadRequest(_) | AppError::BadRequestWithCode(_, _) => StatusCode::BAD_REQUEST,
+            AppError::NotFound
+            | AppError::NotFoundWithMessage(_)
+            | AppError::NotFoundWithCode(_, _) => StatusCode::NOT_FOUND,
+            AppError::Internal
+            | AppError::InternalWithMessage(_)
+            | AppError::InternalWithCode(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
     pub fn error_code(&self) -> ErrorCode {
         match self {
             AppError::BadRequest(_) => ErrorCode::InvalidParam,
+            AppError::BadRequestWithCode(code, _) => *code,
             AppError::NotFound | AppError::NotFoundWithMessage(_) => ErrorCode::NotFound,
+            AppError::NotFoundWithCode(code, _) => *code,
             AppError::Internal | AppError::InternalWithMessage(_) => ErrorCode::InternalError,
+            AppError::InternalWithCode(code, _) => *code,
         }
     }
 }

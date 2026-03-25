@@ -9,6 +9,16 @@ pub enum ErrorCode {
     InvalidParam,
     NotFound,
     InternalError,
+    AuthInvalidCredentials,
+    AuthMissingAuthorizationHeader,
+    AuthInvalidAuthorizationHeader,
+    AuthInvalidToken,
+    AuthInvalidTokenSubject,
+    UserNameEmpty,
+    UserEmailEmpty,
+    UserPasswordEmpty,
+    UserPasswordTooShort,
+    UserEmailExists,
 }
 
 impl ErrorCode {
@@ -17,6 +27,16 @@ impl ErrorCode {
             ErrorCode::InvalidParam => "INVALID_PARAM",
             ErrorCode::NotFound => "NOT_FOUND",
             ErrorCode::InternalError => "INTERNAL_ERROR",
+            ErrorCode::AuthInvalidCredentials => "AUTH_INVALID_CREDENTIALS",
+            ErrorCode::AuthMissingAuthorizationHeader => "AUTH_MISSING_AUTHORIZATION_HEADER",
+            ErrorCode::AuthInvalidAuthorizationHeader => "AUTH_INVALID_AUTHORIZATION_HEADER",
+            ErrorCode::AuthInvalidToken => "AUTH_INVALID_TOKEN",
+            ErrorCode::AuthInvalidTokenSubject => "AUTH_INVALID_TOKEN_SUBJECT",
+            ErrorCode::UserNameEmpty => "USER_NAME_EMPTY",
+            ErrorCode::UserEmailEmpty => "USER_EMAIL_EMPTY",
+            ErrorCode::UserPasswordEmpty => "USER_PASSWORD_EMPTY",
+            ErrorCode::UserPasswordTooShort => "USER_PASSWORD_TOO_SHORT",
+            ErrorCode::UserEmailExists => "USER_EMAIL_EXISTS",
         }
     }
 }

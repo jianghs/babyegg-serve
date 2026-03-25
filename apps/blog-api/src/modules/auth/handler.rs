@@ -1,5 +1,5 @@
 use app_foundation::i18n::{translate, MessageKey};
-use app_foundation::{ApiResponse, AppError};
+use app_foundation::{ApiResponse, AppError, ErrorCode};
 use axum::{extract::State, Json};
 use uuid::Uuid;
 
@@ -21,22 +21,30 @@ pub fn parse_bearer_user_id(
 ) -> Result<Uuid, AppError> {
     let locale = state.config.base.default_locale;
 
-    let auth_header = authorization.ok_or(AppError::BadRequest(
+    let auth_header = authorization.ok_or(AppError::BadRequestWithCode(
+        ErrorCode::AuthMissingAuthorizationHeader,
         translate(locale, MessageKey::MissingAuthorizationHeader).to_string(),
     ))?;
 
     let token = auth_header
         .strip_prefix("Bearer ")
-        .ok_or(AppError::BadRequest(
+        .ok_or(AppError::BadRequestWithCode(
+            ErrorCode::AuthInvalidAuthorizationHeader,
             translate(locale, MessageKey::InvalidAuthorizationHeader).to_string(),
         ))?;
 
     let claims = jwt::verify_token(token, &state.config.jwt_secret).map_err(|_| {
-        AppError::BadRequest(translate(locale, MessageKey::InvalidToken).to_string())
+        AppError::BadRequestWithCode(
+            ErrorCode::AuthInvalidToken,
+            translate(locale, MessageKey::InvalidToken).to_string(),
+        )
     })?;
 
     claims.sub.parse::<Uuid>().map_err(|_| {
-        AppError::BadRequest(translate(locale, MessageKey::InvalidTokenSubject).to_string())
+        AppError::BadRequestWithCode(
+            ErrorCode::AuthInvalidTokenSubject,
+            translate(locale, MessageKey::InvalidTokenSubject).to_string(),
+        )
     })
 }
 
