@@ -98,7 +98,7 @@ rust-platform-template/
 - `POST /auth/login`：登录并返回 Token
 - `GET /users/me`：获取当前登录用户（需 `Authorization: Bearer <token>`）
 - `POST /users`：创建用户
-- `GET /users?page=1&page_size=10`：分页查询用户
+- `GET /users?page=1&page_size=10&sort=created_at&order=desc&filter=...`：通用列表查询参数（当前业务使用 page/page_size，其他字段预留）
 - `GET /users/{id}`：查询单个用户
 - `PUT /users/{id}`：更新用户名
 - `DELETE /users/{id}`：删除用户

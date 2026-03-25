@@ -10,7 +10,7 @@ use crate::{
     modules::{
         auth::handler::parse_bearer_user_id,
         user::{
-            dto::{CreateUserRequest, PaginationQuery, UpdateUserRequest, UserListResponse},
+            dto::{CreateUserRequest, UpdateUserRequest, UserListQuery, UserListResponse},
             model::UserResponse,
             service,
         },
@@ -50,12 +50,11 @@ pub async fn me(
 
 pub async fn list_users(
     State(state): State<AppState>,
-    Query(query): Query<PaginationQuery>,
+    Query(query): Query<UserListQuery>,
 ) -> Result<Json<ApiResponse<UserListResponse>>, AppError> {
-    let page = query.page.unwrap_or(1);
-    let page_size = query.page_size.unwrap_or(10);
+    let normalized = query.normalize(1, 10, 100);
 
-    let result = service::list_users(&state, page, page_size).await?;
+    let result = service::list_users(&state, normalized.page, normalized.page_size).await?;
     Ok(Json(ApiResponse::ok(result)))
 }
 

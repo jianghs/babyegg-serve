@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use app_foundation::i18n::{translate, MessageKey};
-use app_foundation::{AppError, ErrorCode, Locale, PageResponse, ValidationDetail};
+use app_foundation::{AppError, ErrorCode, ListQuery, Locale, PageResponse, ValidationDetail};
 
 use crate::modules::user::model::UserResponse;
 
@@ -65,11 +65,7 @@ impl UpdateUserRequest {
 }
 
 /// 分页查询参数。
-#[derive(Debug, Deserialize)]
-pub struct PaginationQuery {
-    pub page: Option<i64>,
-    pub page_size: Option<i64>,
-}
+pub type UserListQuery = ListQuery;
 
 /// 用户列表响应。
 pub type UserListResponse = PageResponse<UserResponse>;
