@@ -1,7 +1,7 @@
 use app_foundation::{
     error::AppError,
     i18n::{translate, MessageKey},
-    ErrorCode, PageResponse, ValidationDetail,
+    ErrorCode, PageResponse,
 };
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     db::user_repo,
     modules::user::{
-        dto::{CreateUserRequest, UserListResponse},
+        dto::{CreateUserRequest, UpdateUserRequest, UserListResponse},
         model::UserResponse,
     },
     state::AppState,
@@ -25,42 +25,7 @@ pub async fn create_user(
     req: CreateUserRequest,
 ) -> Result<UserResponse, AppError> {
     let locale = state.config.base.default_locale;
-
-    if req.name.trim().is_empty() {
-        return Err(AppError::BadRequestWithDetails(
-            ErrorCode::UserNameEmpty,
-            translate(
-                state.config.base.default_locale,
-                MessageKey::NameCannotBeEmpty,
-            )
-            .to_string(),
-            vec![ValidationDetail::new("name", "required")],
-        ));
-    }
-
-    if req.email.trim().is_empty() {
-        return Err(AppError::BadRequestWithDetails(
-            ErrorCode::UserEmailEmpty,
-            translate(
-                state.config.base.default_locale,
-                MessageKey::EmailCannotBeEmpty,
-            )
-            .to_string(),
-            vec![ValidationDetail::new("email", "required")],
-        ));
-    }
-
-    if req.password.len() < 6 {
-        return Err(AppError::BadRequestWithDetails(
-            ErrorCode::UserPasswordTooShort,
-            translate(
-                state.config.base.default_locale,
-                MessageKey::PasswordTooShort,
-            )
-            .to_string(),
-            vec![ValidationDetail::new("password", "min_length_6")],
-        ));
-    }
+    req.validate(locale)?;
 
     let existing = user_repo::get_user_by_email(&state.db, &req.email)
         .await
@@ -71,14 +36,13 @@ pub async fn create_user(
         })?;
 
     if existing.is_some() {
-        return Err(AppError::BadRequestWithDetails(
+        return Err(AppError::BadRequestWithCode(
             ErrorCode::UserEmailExists,
             translate(
                 state.config.base.default_locale,
                 MessageKey::EmailAlreadyExists,
             )
             .to_string(),
-            vec![ValidationDetail::new("email", "already_exists")],
         ));
     }
 
@@ -182,23 +146,12 @@ pub async fn list_users(
 pub async fn update_user(
     state: &AppState,
     id: Uuid,
-    name: String,
+    req: UpdateUserRequest,
 ) -> Result<UserResponse, AppError> {
     let locale = state.config.base.default_locale;
+    req.validate(locale)?;
 
-    if name.trim().is_empty() {
-        return Err(AppError::BadRequestWithDetails(
-            ErrorCode::UserNameEmpty,
-            translate(
-                state.config.base.default_locale,
-                MessageKey::NameCannotBeEmpty,
-            )
-            .to_string(),
-            vec![ValidationDetail::new("name", "required")],
-        ));
-    }
-
-    let user = user_repo::update_user_name(&state.db, id, &name)
+    let user = user_repo::update_user_name(&state.db, id, &req.name)
         .await
         .map_err(|_| {
             AppError::InternalWithMessage(

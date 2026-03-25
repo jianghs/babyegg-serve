@@ -64,7 +64,7 @@ pub async fn update_user(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<Json<ApiResponse<UserResponse>>, AppError> {
-    let user = service::update_user(&state, id, req.name).await?;
+    let user = service::update_user(&state, id, req).await?;
     Ok(Json(ApiResponse::ok(user)))
 }
 
