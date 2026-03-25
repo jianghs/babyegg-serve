@@ -1,0 +1,61 @@
+use crate::locale::Locale;
+
+/// 基础框架层的消息 key。
+/// 只放公共基础设施日志，不放业务特定文案。
+#[derive(Debug, Clone, Copy)]
+pub enum MessageKey {
+    ServerStarted,
+    ServerStopped,
+    RequestReceived,
+    InternalServerError,
+    NameCannotBeEmpty,
+    EmailCannotBeEmpty,
+    PasswordCannotBeEmpty,
+    PasswordTooShort,
+    EmailAlreadyExists,
+    InvalidEmailOrPassword,
+    MissingAuthorizationHeader,
+    InvalidAuthorizationHeader,
+    InvalidToken,
+    InvalidTokenSubject,
+    NotFound,
+}
+
+pub fn translate(locale: Locale, key: MessageKey) -> &'static str {
+    match locale {
+        Locale::ZhCn => match key {
+            MessageKey::ServerStarted => "服务已启动",
+            MessageKey::ServerStopped => "服务已停止",
+            MessageKey::RequestReceived => "收到请求",
+            MessageKey::InternalServerError => "内部服务器错误",
+            MessageKey::NameCannotBeEmpty => "姓名不能为空",
+            MessageKey::EmailCannotBeEmpty => "邮箱不能为空",
+            MessageKey::PasswordCannotBeEmpty => "密码不能为空",
+            MessageKey::PasswordTooShort => "密码长度至少为 6 位",
+            MessageKey::EmailAlreadyExists => "邮箱已存在",
+            MessageKey::InvalidEmailOrPassword => "邮箱或密码错误",
+            MessageKey::MissingAuthorizationHeader => "缺少 authorization 请求头",
+            MessageKey::InvalidAuthorizationHeader => "authorization 请求头格式错误",
+            MessageKey::InvalidToken => "无效 token",
+            MessageKey::InvalidTokenSubject => "无效 token subject",
+            MessageKey::NotFound => "资源不存在",
+        },
+        Locale::EnUs => match key {
+            MessageKey::ServerStarted => "Server started",
+            MessageKey::ServerStopped => "Server stopped",
+            MessageKey::RequestReceived => "Request received",
+            MessageKey::InternalServerError => "Internal server error",
+            MessageKey::NameCannotBeEmpty => "name cannot be empty",
+            MessageKey::EmailCannotBeEmpty => "email cannot be empty",
+            MessageKey::PasswordCannotBeEmpty => "password cannot be empty",
+            MessageKey::PasswordTooShort => "password must be at least 6 characters",
+            MessageKey::EmailAlreadyExists => "email already exists",
+            MessageKey::InvalidEmailOrPassword => "invalid email or password",
+            MessageKey::MissingAuthorizationHeader => "missing authorization header",
+            MessageKey::InvalidAuthorizationHeader => "invalid authorization header",
+            MessageKey::InvalidToken => "invalid token",
+            MessageKey::InvalidTokenSubject => "invalid token subject",
+            MessageKey::NotFound => "not found",
+        },
+    }
+}

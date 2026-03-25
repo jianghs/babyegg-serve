@@ -1,0 +1,38 @@
+[workspace]
+members = ["crates/app-foundation", "crates/app-testkit", "apps/blog-api"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+
+[workspace.dependencies]
+anyhow = "1"
+axum = "0.8"
+dotenvy = "0.15"
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "rustls",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "uuid",
+    "time",
+    "macros",
+] }
+thiserror = "2"
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+http = "1"
+http-body-util = "0.1"
+jsonwebtoken = "10"
+argon2 = "0.5"
+password-hash = "0.6"

@@ -1,0 +1,10 @@
+[package]
+name = "app-testkit"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+tower.workspace = true
