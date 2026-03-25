@@ -62,7 +62,253 @@ rust-platform-template/
 - `DELETE /users/{id}`
 - `GET /external/ip`
 
-## 4. 统一响应约定
+## 4. 接口时序图
+
+### 4.1 `POST /auth/register`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Router
+    participant Handler as auth::handler::register
+    participant Service as auth::service::register
+    participant UserRepo as db::user_repo
+    participant RbacRepo as db::rbac_repo
+    participant DB
+
+    Client->>Router: POST /auth/register
+    Router->>Handler: register
+    Handler->>Service: service::register(req)
+    Service->>Service: req.validate
+    Service->>UserRepo: get_user_by_email
+    UserRepo->>DB: SELECT users by email
+    UserRepo-->>Service: existing/null
+    Service->>Service: Argon2 hash password
+    Service->>UserRepo: create_user
+    UserRepo->>DB: INSERT users
+    UserRepo-->>Service: user
+    Service->>RbacRepo: assign_role_by_key(user_id, "user")
+    RbacRepo->>DB: INSERT user_roles ON CONFLICT DO NOTHING
+    Service-->>Handler: UserResponse
+    Handler-->>Client: 200/400/500
+```
+
+### 4.2 `POST /auth/login`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Router
+    participant Handler as auth::handler::login
+    participant Service as auth::service::login
+    participant UserRepo as db::user_repo
+    participant RbacRepo as db::rbac_repo
+    participant Jwt as auth::jwt
+    participant AuthRepo as db::auth_repo
+    participant DB
+
+    Client->>Router: POST /auth/login
+    Router->>Handler: login
+    Handler->>Service: service::login(req)
+    Service->>Service: req.validate
+    Service->>UserRepo: get_user_by_email
+    UserRepo->>DB: SELECT users by email
+    UserRepo-->>Service: user/null
+    Service->>Service: Argon2 verify password
+    Service->>RbacRepo: get_user_roles_and_scopes(user_id)
+    RbacRepo->>DB: SELECT roles/scopes
+    RbacRepo-->>Service: roles, scopes
+    Service->>Jwt: create_token(...roles,scopes)
+    Service->>AuthRepo: create_refresh_token
+    AuthRepo->>DB: INSERT refresh_tokens
+    Service-->>Handler: LoginResponse
+    Handler-->>Client: 200/400/500
+```
+
+### 4.3 `GET /users/me`（需要 Bearer）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Router
+    participant AuthMW as auth::middleware::require_auth
+    participant Jwt as auth::jwt
+    participant Handler as user::handler::me
+    participant Service as user::service::me
+    participant UserRepo as db::user_repo
+    participant DB
+
+    Client->>Router: GET /users/me + Bearer token
+    Router->>AuthMW: 鉴权中间件
+    AuthMW->>Jwt: verify_token
+    Jwt-->>AuthMW: claims(sub,roles,scopes)
+    AuthMW-->>Router: 注入 CurrentUser
+    Router->>Handler: me
+    Handler->>Service: service::me(user_id)
+    Service->>UserRepo: get_user(user_id)
+    UserRepo->>DB: SELECT users by id
+    DB-->>UserRepo: user/null
+    UserRepo-->>Service: user/null
+    Service-->>Handler: UserResponse / AppError
+    Handler-->>Client: 200/404/500
+```
+
+### 4.4 `POST /users`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Router
+    participant Handler as user::handler::create_user
+    participant Service as user::service::create_user
+    participant UserRepo as db::user_repo
+    participant DB
+
+    Client->>Router: POST /users
+    Router->>Handler: create_user
+    Handler->>Service: service::create_user(req)
+    Service->>Service: req.validate
+    Service->>UserRepo: get_user_by_email
+    UserRepo->>DB: SELECT users by email
+    UserRepo-->>Service: existing/null
+    Service->>Service: Argon2 hash password
+    Service->>UserRepo: create_user
+    UserRepo->>DB: INSERT users
+    UserRepo-->>Service: user
+    Service-->>Handler: UserResponse
+    Handler-->>Client: 200/400/500
+```
+
+### 4.5 `GET /users`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Router
+    participant Handler as user::handler::list_users
+    participant Service as user::service::list_users
+    participant UserRepo as db::user_repo
+    participant DB
+
+    Client->>Router: GET /users?page=&page_size=
+    Router->>Handler: list_users
+    Handler->>Service: service::list_users(query)
+    Service->>Service: ListQuery.normalize
+    Service->>UserRepo: list_users(page,page_size)
+    UserRepo->>DB: SELECT users LIMIT/OFFSET
+    UserRepo-->>Service: users
+    Service->>UserRepo: count_users
+    UserRepo->>DB: SELECT COUNT(*)
+    UserRepo-->>Service: total
+    Service-->>Handler: PageResponse<UserResponse>
+    Handler-->>Client: 200
+```
+
+### 4.6 `PUT /users/{id}`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Router
+    participant Handler as user::handler::update_user
+    participant Service as user::service::update_user
+    participant UserRepo as db::user_repo
+    participant DB
+
+    Client->>Router: PUT /users/{id}
+    Router->>Handler: update_user
+    Handler->>Service: service::update_user(id, req)
+    Service->>Service: req.validate
+    Service->>UserRepo: update_user_name
+    UserRepo->>DB: UPDATE ... RETURNING
+    UserRepo-->>Service: updated/null
+    Service-->>Handler: UserResponse / NotFound
+    Handler-->>Client: 200/404/400/500
+```
+
+### 4.7 `DELETE /users/{id}`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Router
+    participant Handler as user::handler::delete_user
+    participant Service as user::service::delete_user
+    participant UserRepo as db::user_repo
+    participant DB
+
+    Client->>Router: DELETE /users/{id}
+    Router->>Handler: delete_user
+    Handler->>Service: service::delete_user(id)
+    Service->>UserRepo: delete_user(id)
+    UserRepo->>DB: DELETE FROM users
+    UserRepo-->>Service: rows_affected
+    Service-->>Handler: ok / NotFound
+    Handler-->>Client: 200/404/500
+```
+
+### 4.8 `POST /auth/refresh`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Router
+    participant Handler as auth::handler::refresh
+    participant Service as auth::service::refresh
+    participant AuthRepo as db::auth_repo
+    participant RbacRepo as db::rbac_repo
+    participant UserRepo as db::user_repo
+    participant Jwt as auth::jwt
+    participant DB
+
+    Client->>Router: POST /auth/refresh
+    Router->>Handler: refresh
+    Handler->>Service: service::refresh(req)
+    Service->>Service: req.validate
+    Service->>AuthRepo: find_valid_refresh_token_user_id
+    AuthRepo->>DB: SELECT valid refresh_token
+    AuthRepo-->>Service: user_id/null
+    Service->>AuthRepo: revoke_refresh_token(old_token)
+    AuthRepo->>DB: UPDATE refresh_tokens SET revoked_at
+    Service->>UserRepo: get_user(user_id)
+    Service->>RbacRepo: get_user_roles_and_scopes(user_id)
+    Service->>Jwt: create_token(...roles,scopes)
+    Service->>AuthRepo: create_refresh_token(new_token)
+    Handler-->>Client: 200 + 新 token 对
+```
+
+### 4.9 `POST /auth/logout`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Router
+    participant Handler as auth::handler::logout
+    participant Service as auth::service::logout
+    participant AuthRepo as db::auth_repo
+    participant DB
+
+    Client->>Router: POST /auth/logout
+    Router->>Handler: logout
+    Handler->>Service: service::logout(req)
+    Service->>Service: req.validate
+    Service->>AuthRepo: revoke_refresh_token(token)
+    AuthRepo->>DB: UPDATE refresh_tokens SET revoked_at
+    AuthRepo-->>Service: rows_affected
+    Service-->>Handler: ok / invalid_refresh_token
+    Handler-->>Client: 200/400
+```
+
+## 5. 统一响应约定
 
 成功响应：
 
@@ -93,7 +339,7 @@ rust-platform-template/
 - `error_code` 是稳定机器码，供前端/调用方做逻辑判断
 - `details` 仅在校验类错误时出现
 
-## 5. 认证与授权现状
+## 6. 认证与授权现状
 
 - Access Token：JWT（`sub/iat/exp/roles/scopes`）
 - Claims 动态生成：登录/刷新时从 RBAC 表实时查询 `roles/scopes` 并签发
@@ -103,9 +349,9 @@ rust-platform-template/
 - 授权：`auth::authorization::{require_role, require_scope}`，当前示例在 `/users/me` 使用 `require_scope("users:read")`
 - 注册默认角色：新用户注册后自动绑定 `user` 角色；历史用户登录时会自动补齐默认角色
 
-## 6. 数据库结构
+## 7. 数据库结构
 
-### 6.1 `users`
+### 7.1 `users`
 
 - `id UUID PRIMARY KEY`
 - `name TEXT NOT NULL`
@@ -114,7 +360,7 @@ rust-platform-template/
 - `created_at TIMESTAMPTZ NOT NULL`
 - `updated_at TIMESTAMPTZ NOT NULL`
 
-### 6.2 `refresh_tokens`
+### 7.2 `refresh_tokens`
 
 - `id UUID PRIMARY KEY`
 - `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`
@@ -124,35 +370,35 @@ rust-platform-template/
 - `revoked_at TIMESTAMPTZ NULL`
 - 索引：`user_id`、`expires_at`
 
-### 6.3 `roles`
+### 7.3 `roles`
 
 - `id BIGSERIAL PRIMARY KEY`
 - `role_key TEXT NOT NULL UNIQUE`（如 `user`、`admin`）
 - `description TEXT NOT NULL`
 - `created_at TIMESTAMPTZ NOT NULL`
 
-### 6.4 `permissions`
+### 7.4 `permissions`
 
 - `id BIGSERIAL PRIMARY KEY`
 - `permission_key TEXT NOT NULL UNIQUE`（如 `users:read`、`*`）
 - `description TEXT NOT NULL`
 - `created_at TIMESTAMPTZ NOT NULL`
 
-### 6.5 `role_permissions`
+### 7.5 `role_permissions`
 
 - `role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE`
 - `permission_id BIGINT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE`
 - `created_at TIMESTAMPTZ NOT NULL`
 - 主键：`(role_id, permission_id)`
 
-### 6.6 `user_roles`
+### 7.6 `user_roles`
 
 - `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`
 - `role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE`
 - `created_at TIMESTAMPTZ NOT NULL`
 - 主键：`(user_id, role_id)`
 
-## 7. 国际化
+## 8. 国际化
 
 当前支持：
 
@@ -164,15 +410,15 @@ rust-platform-template/
 - 语言由 `DEFAULT_LOCALE` 决定（全局）
 - 尚未实现按请求头（`Accept-Language`）动态切换
 
-## 8. 快速开始
+## 9. 快速开始
 
-### 8.1 启动数据库
+### 9.1 启动数据库
 
 ```bash
 docker compose up -d
 ```
 
-### 8.2 准备环境变量
+### 9.2 准备环境变量
 
 仓库根目录：
 
@@ -187,7 +433,7 @@ cd apps/blog-api
 cp .env.example .env
 ```
 
-### 8.3 启动服务
+### 9.3 启动服务
 
 ```bash
 cargo run -p blog-api
@@ -201,7 +447,7 @@ SKIP_MIGRATIONS=true cargo run -p blog-api
 
 > 注意：`SKIP_MIGRATIONS=true` 只跳过迁移，不跳过数据库连接。
 
-### 8.4 检查与测试
+### 9.4 检查与测试
 
 ```bash
 cargo check --workspace
@@ -210,7 +456,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
 ```
 
-## 9. Makefile
+## 10. Makefile
 
 - `make up`
 - `make down`
@@ -220,7 +466,7 @@ cargo test --workspace
 - `make test`
 - `make run-blog-api`
 
-## 10. 环境变量
+## 11. 环境变量
 
 - `APP_HOST`
 - `APP_PORT`
@@ -233,7 +479,7 @@ cargo test --workspace
 - `JWT_REFRESH_EXPIRE_SECONDS`
 - `SKIP_MIGRATIONS`
 
-## 11. 当前验证状态
+## 12. 当前验证状态
 
 本仓库当前可通过：
 
@@ -241,7 +487,7 @@ cargo test --workspace
 - `cargo check --workspace`
 - `cargo test --workspace`
 
-## 12. 后续建议
+## 13. 后续建议
 
 - Refresh token 明文改哈希存储，增加设备维度会话管理
 - OpenAPI 自动生成与 contract tests
