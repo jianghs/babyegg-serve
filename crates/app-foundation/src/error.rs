@@ -19,6 +19,8 @@ pub enum AppError {
     BadRequestWithCode(ErrorCode, String),
     #[error("{1}")]
     BadRequestWithDetails(ErrorCode, String, Vec<ValidationDetail>),
+    #[error("{1}")]
+    ForbiddenWithCode(ErrorCode, String),
 
     #[error("not found")]
     NotFound,
@@ -67,6 +69,7 @@ impl AppError {
             AppError::BadRequest(_)
             | AppError::BadRequestWithCode(_, _)
             | AppError::BadRequestWithDetails(_, _, _) => StatusCode::BAD_REQUEST,
+            AppError::ForbiddenWithCode(_, _) => StatusCode::FORBIDDEN,
             AppError::NotFound
             | AppError::NotFoundWithMessage(_)
             | AppError::NotFoundWithCode(_, _) => StatusCode::NOT_FOUND,
@@ -81,6 +84,7 @@ impl AppError {
             AppError::BadRequest(_) => ErrorCode::InvalidParam,
             AppError::BadRequestWithCode(code, _) => *code,
             AppError::BadRequestWithDetails(code, _, _) => *code,
+            AppError::ForbiddenWithCode(code, _) => *code,
             AppError::NotFound | AppError::NotFoundWithMessage(_) => ErrorCode::NotFound,
             AppError::NotFoundWithCode(code, _) => *code,
             AppError::Internal | AppError::InternalWithMessage(_) => ErrorCode::InternalError,

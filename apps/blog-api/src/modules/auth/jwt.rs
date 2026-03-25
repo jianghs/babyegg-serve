@@ -12,6 +12,12 @@ pub struct Claims {
     pub iat: usize,
     /// 过期时间
     pub exp: usize,
+    /// 角色列表
+    #[serde(default)]
+    pub roles: Vec<String>,
+    /// 权限范围
+    #[serde(default)]
+    pub scopes: Vec<String>,
 }
 
 pub fn create_token(
@@ -25,6 +31,8 @@ pub fn create_token(
         sub: user_id.to_string(),
         iat: now as usize,
         exp: (now + expire_seconds) as usize,
+        roles: vec!["user".to_string()],
+        scopes: vec!["*".to_string()],
     };
 
     encode(

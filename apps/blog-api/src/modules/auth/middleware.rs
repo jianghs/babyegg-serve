@@ -53,6 +53,10 @@ pub async fn require_auth(
         )
     })?;
 
-    req.extensions_mut().insert(CurrentUser { user_id });
+    req.extensions_mut().insert(CurrentUser {
+        user_id,
+        roles: claims.roles,
+        scopes: claims.scopes,
+    });
     Ok(next.run(req).await)
 }

@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{
     modules::{
-        auth::current_user::CurrentUser,
+        auth::{authorization, current_user::CurrentUser},
         user::{
             dto::{CreateUserRequest, UpdateUserRequest, UserListQuery, UserListResponse},
             model::UserResponse,
@@ -37,6 +37,7 @@ pub async fn me(
     State(state): State<AppState>,
     Extension(current_user): Extension<CurrentUser>,
 ) -> Result<Json<ApiResponse<UserResponse>>, AppError> {
+    authorization::require_scope(&state, &current_user, "users:read")?;
     let user = service::me(&state, current_user.user_id).await?;
 
     Ok(Json(ApiResponse::ok(user)))

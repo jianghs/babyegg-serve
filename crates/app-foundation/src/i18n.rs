@@ -18,6 +18,8 @@ pub enum MessageKey {
     InvalidAuthorizationHeader,
     InvalidToken,
     InvalidTokenSubject,
+    ForbiddenRole,
+    ForbiddenScope,
     NotFound,
 }
 
@@ -38,6 +40,8 @@ pub fn translate(locale: Locale, key: MessageKey) -> &'static str {
             MessageKey::InvalidAuthorizationHeader => "authorization 请求头格式错误",
             MessageKey::InvalidToken => "无效 token",
             MessageKey::InvalidTokenSubject => "无效 token subject",
+            MessageKey::ForbiddenRole => "没有访问该角色资源的权限",
+            MessageKey::ForbiddenScope => "没有访问该范围资源的权限",
             MessageKey::NotFound => "资源不存在",
         },
         Locale::EnUs => match key {
@@ -55,6 +59,8 @@ pub fn translate(locale: Locale, key: MessageKey) -> &'static str {
             MessageKey::InvalidAuthorizationHeader => "invalid authorization header",
             MessageKey::InvalidToken => "invalid token",
             MessageKey::InvalidTokenSubject => "invalid token subject",
+            MessageKey::ForbiddenRole => "forbidden role",
+            MessageKey::ForbiddenScope => "forbidden scope",
             MessageKey::NotFound => "not found",
         },
     }

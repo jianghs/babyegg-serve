@@ -54,6 +54,7 @@ rust-platform-template/
 - 用户 CRUD
 - DTO 层统一参数校验入口（`validate()`）
 - 认证中间件注入 `CurrentUser`（`/users/me`）
+- 授权骨架（`require_role` / `require_scope`，`/users/me` 已示例接入）
 - 当前登录用户接口（Bearer Token）
 - 分页用户列表
 - 外部 HTTP 调用示例（`/external/ip`）
@@ -91,6 +92,7 @@ rust-platform-template/
 说明：错误 `message` 会随 `DEFAULT_LOCALE` 切换为中文或英文。
 `error_code` 为稳定机器码（示例：`USER_EMAIL_EXISTS`、`AUTH_INVALID_TOKEN`、`NOT_FOUND`）。
 `details` 为可选字段，主要用于参数校验失败的结构化信息。
+鉴权通过但权限不足时返回 `403`，例如 `AUTH_FORBIDDEN_SCOPE`。
 
 接口列表：
 

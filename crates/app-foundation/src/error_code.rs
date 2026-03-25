@@ -7,6 +7,7 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorCode {
     InvalidParam,
+    Forbidden,
     NotFound,
     InternalError,
     AuthInvalidCredentials,
@@ -14,6 +15,8 @@ pub enum ErrorCode {
     AuthInvalidAuthorizationHeader,
     AuthInvalidToken,
     AuthInvalidTokenSubject,
+    AuthForbiddenRole,
+    AuthForbiddenScope,
     UserNameEmpty,
     UserEmailEmpty,
     UserPasswordEmpty,
@@ -25,6 +28,7 @@ impl ErrorCode {
     pub fn as_str(self) -> &'static str {
         match self {
             ErrorCode::InvalidParam => "INVALID_PARAM",
+            ErrorCode::Forbidden => "FORBIDDEN",
             ErrorCode::NotFound => "NOT_FOUND",
             ErrorCode::InternalError => "INTERNAL_ERROR",
             ErrorCode::AuthInvalidCredentials => "AUTH_INVALID_CREDENTIALS",
@@ -32,6 +36,8 @@ impl ErrorCode {
             ErrorCode::AuthInvalidAuthorizationHeader => "AUTH_INVALID_AUTHORIZATION_HEADER",
             ErrorCode::AuthInvalidToken => "AUTH_INVALID_TOKEN",
             ErrorCode::AuthInvalidTokenSubject => "AUTH_INVALID_TOKEN_SUBJECT",
+            ErrorCode::AuthForbiddenRole => "AUTH_FORBIDDEN_ROLE",
+            ErrorCode::AuthForbiddenScope => "AUTH_FORBIDDEN_SCOPE",
             ErrorCode::UserNameEmpty => "USER_NAME_EMPTY",
             ErrorCode::UserEmailEmpty => "USER_EMAIL_EMPTY",
             ErrorCode::UserPasswordEmpty => "USER_PASSWORD_EMPTY",
