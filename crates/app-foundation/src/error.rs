@@ -6,6 +6,8 @@ use axum::{
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::error_code::ErrorCode;
+
 /// 通用应用错误。
 /// 业务项目可在自己的 crate 中继续扩展，或者包装成更细的错误类型。
 #[derive(Debug, Error)]
@@ -27,24 +29,41 @@ pub enum AppError {
 #[derive(Debug, Serialize)]
 struct ErrorBody {
     code: i32,
+    error_code: String,
     message: String,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let status = match self {
+        let status = self.status_code();
+        let error_code = self.error_code();
+
+        let body = Json(ErrorBody {
+            code: status.as_u16() as i32,
+            error_code: error_code.to_string(),
+            message: self.to_string(),
+        });
+
+        (status, body).into_response()
+    }
+}
+
+impl AppError {
+    pub fn status_code(&self) -> StatusCode {
+        match self {
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::NotFound | AppError::NotFoundWithMessage(_) => StatusCode::NOT_FOUND,
             AppError::Internal | AppError::InternalWithMessage(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
-        };
+        }
+    }
 
-        let body = Json(ErrorBody {
-            code: status.as_u16() as i32,
-            message: self.to_string(),
-        });
-
-        (status, body).into_response()
+    pub fn error_code(&self) -> ErrorCode {
+        match self {
+            AppError::BadRequest(_) => ErrorCode::InvalidParam,
+            AppError::NotFound | AppError::NotFoundWithMessage(_) => ErrorCode::NotFound,
+            AppError::Internal | AppError::InternalWithMessage(_) => ErrorCode::InternalError,
+        }
     }
 }

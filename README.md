@@ -75,6 +75,7 @@ rust-platform-template/
 ```json
 {
   "code": 400,
+  "error_code": "INVALID_PARAM",
   "message": "name cannot be empty"
 }
 ```
