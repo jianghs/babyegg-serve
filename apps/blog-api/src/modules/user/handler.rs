@@ -1,14 +1,13 @@
 use app_foundation::{ApiResponse, AppError};
 use axum::{
-    extract::{Path, Query, State},
-    http::HeaderMap,
+    extract::{Extension, Path, Query, State},
     Json,
 };
 use uuid::Uuid;
 
 use crate::{
     modules::{
-        auth::handler::parse_bearer_user_id,
+        auth::current_user::CurrentUser,
         user::{
             dto::{CreateUserRequest, UpdateUserRequest, UserListQuery, UserListResponse},
             model::UserResponse,
@@ -36,14 +35,9 @@ pub async fn get_user(
 
 pub async fn me(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    Extension(current_user): Extension<CurrentUser>,
 ) -> Result<Json<ApiResponse<UserResponse>>, AppError> {
-    let authorization = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok());
-
-    let user_id = parse_bearer_user_id(authorization, &state)?;
-    let user = service::me(&state, user_id).await?;
+    let user = service::me(&state, current_user.user_id).await?;
 
     Ok(Json(ApiResponse::ok(user)))
 }

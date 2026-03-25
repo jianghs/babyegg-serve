@@ -18,11 +18,16 @@ pub fn build_router(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let me_route = get(modules::user::handler::me).route_layer(middleware::from_fn_with_state(
+        state.clone(),
+        modules::auth::middleware::require_auth,
+    ));
+
     Router::new()
         .route("/health", get(health::health))
         .route("/auth/register", post(modules::auth::handler::register))
         .route("/auth/login", post(modules::auth::handler::login))
-        .route("/users/me", get(modules::user::handler::me))
+        .route("/users/me", me_route)
         .route(
             "/users",
             post(modules::user::handler::create_user).get(modules::user::handler::list_users),

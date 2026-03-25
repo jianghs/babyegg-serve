@@ -53,6 +53,7 @@ rust-platform-template/
 - 用户注册/登录（Argon2 密码哈希 + JWT）
 - 用户 CRUD
 - DTO 层统一参数校验入口（`validate()`）
+- 认证中间件注入 `CurrentUser`（`/users/me`）
 - 当前登录用户接口（Bearer Token）
 - 分页用户列表
 - 外部 HTTP 调用示例（`/external/ip`）
