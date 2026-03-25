@@ -7,10 +7,13 @@ use argon2::{
 };
 
 use crate::{
-    db::user_repo,
+    db::{auth_repo, user_repo},
     modules::{
         auth::{
-            dto::{LoginRequest, LoginResponse, RegisterRequest, TokenResponse},
+            dto::{
+                LoginRequest, LoginResponse, LogoutRequest, RefreshRequest, RegisterRequest,
+                TokenResponse,
+            },
             jwt,
         },
         user::model::UserResponse,
@@ -91,8 +94,97 @@ pub async fn login(state: &AppState, req: LoginRequest) -> Result<LoginResponse,
             )
         })?;
 
-    let token = jwt::create_token(
-        user.id,
+    let user_id = user.id;
+    let user_response: UserResponse = user.into();
+    let token = issue_token_pair(state, user_id).await?;
+
+    Ok(LoginResponse {
+        token,
+        user: user_response,
+    })
+}
+
+/// 使用 refresh_token 换取新的 access_token + refresh_token。
+pub async fn refresh(state: &AppState, req: RefreshRequest) -> Result<LoginResponse, AppError> {
+    let locale = state.config.base.default_locale;
+    req.validate(locale)?;
+
+    let user_id = auth_repo::find_valid_refresh_token_user_id(&state.db, &req.refresh_token)
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?
+        .ok_or(AppError::BadRequestWithCode(
+            ErrorCode::AuthInvalidRefreshToken,
+            translate(locale, MessageKey::InvalidRefreshToken).to_string(),
+        ))?;
+
+    let revoked = auth_repo::revoke_refresh_token(&state.db, &req.refresh_token)
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?;
+    if !revoked {
+        return Err(AppError::BadRequestWithCode(
+            ErrorCode::AuthInvalidRefreshToken,
+            translate(locale, MessageKey::InvalidRefreshToken).to_string(),
+        ));
+    }
+
+    let user = user_repo::get_user(&state.db, user_id)
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?
+        .ok_or(AppError::NotFoundWithCode(
+            ErrorCode::NotFound,
+            translate(locale, MessageKey::NotFound).to_string(),
+        ))?;
+
+    let token = issue_token_pair(state, user_id).await?;
+
+    Ok(LoginResponse {
+        token,
+        user: user.into(),
+    })
+}
+
+/// 撤销 refresh_token。
+pub async fn logout(state: &AppState, req: LogoutRequest) -> Result<(), AppError> {
+    let locale = state.config.base.default_locale;
+    req.validate(locale)?;
+
+    let revoked = auth_repo::revoke_refresh_token(&state.db, &req.refresh_token)
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?;
+
+    if !revoked {
+        return Err(AppError::BadRequestWithCode(
+            ErrorCode::AuthInvalidRefreshToken,
+            translate(locale, MessageKey::InvalidRefreshToken).to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+async fn issue_token_pair(
+    state: &AppState,
+    user_id: uuid::Uuid,
+) -> Result<TokenResponse, AppError> {
+    let locale = state.config.base.default_locale;
+    let access_token = jwt::create_token(
+        user_id,
         &state.config.jwt_secret,
         state.config.jwt_expire_seconds,
     )
@@ -102,14 +194,23 @@ pub async fn login(state: &AppState, req: LoginRequest) -> Result<LoginResponse,
         )
     })?;
 
-    let user_response: UserResponse = user.into();
+    let refresh_token = uuid::Uuid::new_v4().to_string();
+    let refresh_expires_at = time::OffsetDateTime::now_utc()
+        + time::Duration::seconds(state.config.jwt_refresh_expire_seconds);
 
-    Ok(LoginResponse {
-        token: TokenResponse {
-            access_token: token,
-            token_type: "Bearer".to_string(),
-            expires_in: state.config.jwt_expire_seconds,
-        },
-        user: user_response,
+    auth_repo::create_refresh_token(&state.db, user_id, &refresh_token, refresh_expires_at)
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?;
+
+    Ok(TokenResponse {
+        access_token,
+        refresh_token,
+        token_type: "Bearer".to_string(),
+        expires_in: state.config.jwt_expire_seconds,
+        refresh_expires_in: state.config.jwt_refresh_expire_seconds,
     })
 }

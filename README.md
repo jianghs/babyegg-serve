@@ -99,6 +99,8 @@ rust-platform-template/
 - `GET /health`：健康检查
 - `POST /auth/register`：注册
 - `POST /auth/login`：登录并返回 Token
+- `POST /auth/refresh`：使用 refresh token 换取新的 token 对
+- `POST /auth/logout`：撤销 refresh token
 - `GET /users/me`：获取当前登录用户（需 `Authorization: Bearer <token>`）
 - `POST /users`：创建用户
 - `GET /users?page=1&page_size=10&sort=created_at&order=desc&filter=...`：通用列表查询参数（当前业务使用 page/page_size，其他字段预留）
@@ -204,6 +206,7 @@ cargo test --workspace
 - `HTTPBIN_BASE_URL`：外部 HTTP 示例服务地址
 - `JWT_SECRET`：JWT 签名密钥（建议生产环境强随机）
 - `JWT_EXPIRE_SECONDS`：JWT 过期时间（秒）
+- `JWT_REFRESH_EXPIRE_SECONDS`：Refresh Token 过期时间（秒）
 - `SKIP_MIGRATIONS`：是否跳过启动 migration（`true/1/yes/on`）
 
 ## 10. 当前验证状态

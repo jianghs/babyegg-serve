@@ -15,6 +15,8 @@ pub struct AppConfig {
     pub jwt_secret: String,
     /// JWT 有效期，单位秒
     pub jwt_expire_seconds: i64,
+    /// Refresh Token 有效期，单位秒
+    pub jwt_refresh_expire_seconds: i64,
 }
 
 impl AppConfig {
@@ -30,6 +32,10 @@ impl AppConfig {
                 .unwrap_or_else(|_| "86400".to_string())
                 .parse::<i64>()
                 .context("JWT_EXPIRE_SECONDS must be a valid i64")?,
+            jwt_refresh_expire_seconds: std::env::var("JWT_REFRESH_EXPIRE_SECONDS")
+                .unwrap_or_else(|_| "604800".to_string())
+                .parse::<i64>()
+                .context("JWT_REFRESH_EXPIRE_SECONDS must be a valid i64")?,
         })
     }
 }

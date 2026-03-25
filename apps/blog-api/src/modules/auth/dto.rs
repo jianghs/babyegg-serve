@@ -71,12 +71,54 @@ impl LoginRequest {
     }
 }
 
+/// Refresh 请求。
+#[derive(Debug, Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+impl RefreshRequest {
+    pub fn validate(&self, locale: Locale) -> Result<(), AppError> {
+        if self.refresh_token.trim().is_empty() {
+            return Err(AppError::BadRequestWithDetails(
+                ErrorCode::AuthMissingRefreshToken,
+                translate(locale, MessageKey::MissingRefreshToken).to_string(),
+                vec![ValidationDetail::new("refresh_token", "required")],
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+/// Logout 请求。
+#[derive(Debug, Deserialize)]
+pub struct LogoutRequest {
+    pub refresh_token: String,
+}
+
+impl LogoutRequest {
+    pub fn validate(&self, locale: Locale) -> Result<(), AppError> {
+        if self.refresh_token.trim().is_empty() {
+            return Err(AppError::BadRequestWithDetails(
+                ErrorCode::AuthMissingRefreshToken,
+                translate(locale, MessageKey::MissingRefreshToken).to_string(),
+                vec![ValidationDetail::new("refresh_token", "required")],
+            ));
+        }
+
+        Ok(())
+    }
+}
+
 /// Token 响应。
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
     pub access_token: String,
+    pub refresh_token: String,
     pub token_type: String,
     pub expires_in: i64,
+    pub refresh_expires_in: i64,
 }
 
 /// 登录响应。

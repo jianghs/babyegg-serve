@@ -3,7 +3,7 @@ use axum::{extract::State, Json};
 
 use crate::{
     modules::{
-        auth::dto::{LoginRequest, LoginResponse, RegisterRequest},
+        auth::dto::{LoginRequest, LoginResponse, LogoutRequest, RefreshRequest, RegisterRequest},
         auth::service,
         user::model::UserResponse,
     },
@@ -24,4 +24,22 @@ pub async fn login(
 ) -> Result<Json<ApiResponse<LoginResponse>>, AppError> {
     let result = service::login(&state, req).await?;
     Ok(Json(ApiResponse::ok(result)))
+}
+
+pub async fn refresh(
+    State(state): State<AppState>,
+    Json(req): Json<RefreshRequest>,
+) -> Result<Json<ApiResponse<LoginResponse>>, AppError> {
+    let result = service::refresh(&state, req).await?;
+    Ok(Json(ApiResponse::ok(result)))
+}
+
+pub async fn logout(
+    State(state): State<AppState>,
+    Json(req): Json<LogoutRequest>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    service::logout(&state, req).await?;
+    Ok(Json(ApiResponse::ok(serde_json::json!({
+        "logged_out": true
+    }))))
 }

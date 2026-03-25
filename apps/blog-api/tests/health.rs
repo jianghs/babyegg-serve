@@ -17,6 +17,7 @@ async fn health_endpoint_returns_ok() {
         httpbin_base_url: "https://httpbin.org".to_string(),
         jwt_secret: "change_me_in_production".to_string(),
         jwt_expire_seconds: 86400,
+        jwt_refresh_expire_seconds: 604800,
     };
 
     let pool = sqlx::postgres::PgPoolOptions::new()

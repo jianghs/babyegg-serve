@@ -27,6 +27,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", get(health::health))
         .route("/auth/register", post(modules::auth::handler::register))
         .route("/auth/login", post(modules::auth::handler::login))
+        .route("/auth/refresh", post(modules::auth::handler::refresh))
+        .route("/auth/logout", post(modules::auth::handler::logout))
         .route("/users/me", me_route)
         .route(
             "/users",
