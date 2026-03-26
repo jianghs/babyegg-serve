@@ -1,119 +1,30 @@
 use app_foundation::i18n::{translate, MessageKey};
 use app_foundation::{AppError, ErrorCode};
-use argon2::password_hash::rand_core::OsRng;
-use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
-};
 
 use crate::{
-    db::{auth_repo, rbac_repo, user_repo},
+    db::session_repo,
     modules::{
         auth::{
-            dto::{
-                LoginRequest, LoginResponse, LogoutRequest, RefreshRequest, RegisterRequest,
-                TokenResponse,
-            },
+            dto::{LoginRequest, LoginResponse, LogoutRequest, RefreshRequest, TokenResponse},
             jwt,
         },
-        user::model::UserResponse,
+        identity, rbac,
     },
     state::AppState,
 };
-
-/// 注册用户。
-pub async fn register(state: &AppState, req: RegisterRequest) -> Result<UserResponse, AppError> {
-    let locale = state.config.base.default_locale;
-    req.validate(locale)?;
-
-    let existing = user_repo::get_user_by_email(&state.db, &req.email)
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?;
-
-    if existing.is_some() {
-        return Err(AppError::BadRequestWithCode(
-            ErrorCode::UserEmailExists,
-            translate(locale, MessageKey::EmailAlreadyExists).to_string(),
-        ));
-    }
-
-    let salt = SaltString::generate(&mut OsRng);
-    let password_hash = Argon2::default()
-        .hash_password(req.password.as_bytes(), &salt)
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?
-        .to_string();
-
-    let user = user_repo::create_user(&state.db, &req.name, &req.email, &password_hash)
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?;
-
-    let assigned = rbac_repo::assign_role_by_key(&state.db, user.id, "user")
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?;
-    if !assigned {
-        return Err(AppError::InternalWithMessage(
-            translate(locale, MessageKey::InternalServerError).to_string(),
-        ));
-    }
-
-    Ok(user.into())
-}
 
 /// 登录。
 pub async fn login(state: &AppState, req: LoginRequest) -> Result<LoginResponse, AppError> {
     let locale = state.config.base.default_locale;
     req.validate(locale)?;
 
-    let user = user_repo::get_user_by_email(&state.db, &req.email)
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?
-        .ok_or(AppError::BadRequestWithCode(
-            ErrorCode::AuthInvalidCredentials,
-            translate(locale, MessageKey::InvalidEmailOrPassword).to_string(),
-        ))?;
-
-    let parsed_hash = PasswordHash::new(&user.password_hash).map_err(|_| {
-        AppError::InternalWithMessage(
-            translate(locale, MessageKey::InternalServerError).to_string(),
-        )
-    })?;
-
-    Argon2::default()
-        .verify_password(req.password.as_bytes(), &parsed_hash)
-        .map_err(|_| {
-            AppError::BadRequestWithCode(
-                ErrorCode::AuthInvalidCredentials,
-                translate(locale, MessageKey::InvalidEmailOrPassword).to_string(),
-            )
-        })?;
-
+    let user = identity::service::verify_credentials(state, &req.email, &req.password).await?;
     let user_id = user.id;
-    let user_response: UserResponse = user.into();
     let token = issue_token_pair(state, user_id).await?;
 
     Ok(LoginResponse {
         token,
-        user: user_response,
+        user: user.into(),
     })
 }
 
@@ -122,7 +33,7 @@ pub async fn refresh(state: &AppState, req: RefreshRequest) -> Result<LoginRespo
     let locale = state.config.base.default_locale;
     req.validate(locale)?;
 
-    let user_id = auth_repo::find_valid_refresh_token_user_id(&state.db, &req.refresh_token)
+    let user_id = session_repo::find_valid_refresh_token_user_id(&state.db, &req.refresh_token)
         .await
         .map_err(|_| {
             AppError::InternalWithMessage(
@@ -134,7 +45,7 @@ pub async fn refresh(state: &AppState, req: RefreshRequest) -> Result<LoginRespo
             translate(locale, MessageKey::InvalidRefreshToken).to_string(),
         ))?;
 
-    let revoked = auth_repo::revoke_refresh_token(&state.db, &req.refresh_token)
+    let revoked = session_repo::revoke_refresh_token(&state.db, &req.refresh_token)
         .await
         .map_err(|_| {
             AppError::InternalWithMessage(
@@ -148,17 +59,13 @@ pub async fn refresh(state: &AppState, req: RefreshRequest) -> Result<LoginRespo
         ));
     }
 
-    let user = user_repo::get_user(&state.db, user_id)
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?
-        .ok_or(AppError::NotFoundWithCode(
-            ErrorCode::NotFound,
-            translate(locale, MessageKey::NotFound).to_string(),
-        ))?;
+    let user =
+        identity::service::get_user(state, user_id)
+            .await?
+            .ok_or(AppError::NotFoundWithCode(
+                ErrorCode::NotFound,
+                translate(locale, MessageKey::NotFound).to_string(),
+            ))?;
 
     let token = issue_token_pair(state, user_id).await?;
 
@@ -173,7 +80,7 @@ pub async fn logout(state: &AppState, req: LogoutRequest) -> Result<(), AppError
     let locale = state.config.base.default_locale;
     req.validate(locale)?;
 
-    let revoked = auth_repo::revoke_refresh_token(&state.db, &req.refresh_token)
+    let revoked = session_repo::revoke_refresh_token(&state.db, &req.refresh_token)
         .await
         .map_err(|_| {
             AppError::InternalWithMessage(
@@ -196,42 +103,12 @@ async fn issue_token_pair(
     user_id: uuid::Uuid,
 ) -> Result<TokenResponse, AppError> {
     let locale = state.config.base.default_locale;
-    let (mut roles, mut scopes) = rbac_repo::get_user_roles_and_scopes(&state.db, user_id)
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?;
-
-    // 兼容历史数据：如果用户还没有角色，补上默认 user 角色后重查。
-    if roles.is_empty() {
-        let assigned = rbac_repo::assign_role_by_key(&state.db, user_id, "user")
-            .await
-            .map_err(|_| {
-                AppError::InternalWithMessage(
-                    translate(locale, MessageKey::InternalServerError).to_string(),
-                )
-            })?;
-        if !assigned {
-            return Err(AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            ));
-        }
-
-        (roles, scopes) = rbac_repo::get_user_roles_and_scopes(&state.db, user_id)
-            .await
-            .map_err(|_| {
-                AppError::InternalWithMessage(
-                    translate(locale, MessageKey::InternalServerError).to_string(),
-                )
-            })?;
-    }
+    let (roles, scopes) = rbac::service::build_claims(state, user_id).await?;
 
     let access_token = jwt::create_token(
         user_id,
-        &state.config.jwt_secret,
-        state.config.jwt_expire_seconds,
+        &state.config.auth.jwt_secret,
+        state.config.auth.access_token_ttl_seconds,
         roles,
         scopes,
     )
@@ -243,9 +120,9 @@ async fn issue_token_pair(
 
     let refresh_token = uuid::Uuid::new_v4().to_string();
     let refresh_expires_at = time::OffsetDateTime::now_utc()
-        + time::Duration::seconds(state.config.jwt_refresh_expire_seconds);
+        + time::Duration::seconds(state.config.auth.refresh_token_ttl_seconds);
 
-    auth_repo::create_refresh_token(&state.db, user_id, &refresh_token, refresh_expires_at)
+    session_repo::create_refresh_token(&state.db, user_id, &refresh_token, refresh_expires_at)
         .await
         .map_err(|_| {
             AppError::InternalWithMessage(
@@ -257,7 +134,7 @@ async fn issue_token_pair(
         access_token,
         refresh_token,
         token_type: "Bearer".to_string(),
-        expires_in: state.config.jwt_expire_seconds,
-        refresh_expires_in: state.config.jwt_refresh_expire_seconds,
+        expires_in: state.config.auth.access_token_ttl_seconds,
+        refresh_expires_in: state.config.auth.refresh_token_ttl_seconds,
     })
 }

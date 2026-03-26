@@ -1,177 +1,69 @@
-use axum::{body::Body, Router};
-use blog_api::{app, config::AppConfig, db::rbac_repo, modules::auth::jwt, state::AppState};
-use http::{Method, Request, StatusCode};
-use http_body_util::BodyExt;
-use serde_json::{json, Value};
-use sqlx::PgPool;
-use tower::ServiceExt;
+use app_testkit::{request_empty_json_with_auth, request_json, request_json_with_auth};
+use blog_api::{
+    db::rbac_repo,
+    modules::{
+        auth::jwt,
+        rbac::{
+            catalog::{PERMISSION_KEYS, ROLE_KEYS, ROLE_PERMISSION_PAIRS},
+            keys::{PermissionKey, RoleKey},
+        },
+    },
+};
+use http::{Method, StatusCode};
+use serde_json::json;
 use uuid::Uuid;
 
-async fn setup_app_with_db() -> Option<(Router, AppConfig, PgPool)> {
-    let config = AppConfig {
-        base: app_foundation::BaseConfig {
-            host: "127.0.0.1".to_string(),
-            port: 3000,
-            default_locale: app_foundation::Locale::ZhCn,
-        },
-        database_url: std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://postgres:postgres@127.0.0.1:5432/blog_api".to_string()),
-        httpbin_base_url: "https://httpbin.org".to_string(),
-        jwt_secret: "change_me_in_production".to_string(),
-        jwt_expire_seconds: 86400,
-        jwt_refresh_expire_seconds: 604800,
-    };
-
-    let pool = match sqlx::postgres::PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&config.database_url)
-        .await
-    {
-        Ok(pool) => pool,
-        Err(err) => {
-            eprintln!("skip auth_rbac_claims test: cannot connect database: {err}");
-            return None;
-        }
-    };
-
-    if let Err(err) = sqlx::migrate!("./migrations").run(&pool).await {
-        eprintln!("skip auth_rbac_claims test: cannot run migrations: {err}");
-        return None;
-    }
-
-    let state = AppState::new(pool.clone(), config.clone());
-    let app = app::build_router(state);
-    Some((app, config, pool))
-}
-
-async fn request_json(
-    app: Router,
-    method: Method,
-    uri: &str,
-    payload: Value,
-) -> (StatusCode, Value) {
-    let req = Request::builder()
-        .method(method)
-        .uri(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .expect("failed to build request");
-
-    let resp = app.oneshot(req).await.expect("request failed");
-    let status = resp.status();
-    let bytes = resp
-        .into_body()
-        .collect()
-        .await
-        .expect("read body failed")
-        .to_bytes();
-    let body: Value = serde_json::from_slice(&bytes).expect("response is not json");
-
-    (status, body)
-}
+mod support;
 
 #[tokio::test]
 async fn login_and_refresh_should_issue_dynamic_claims_from_rbac() {
-    let Some((app, config, db)) = setup_app_with_db().await else {
+    let Some((app, config, db)) = support::setup_app_with_db().await else {
         return;
     };
 
     let email = format!("rbac-{}@example.com", Uuid::new_v4());
     let password = "secret123";
+    let session = support::register_and_login(app.clone(), "rbac-user", &email, password).await;
 
-    let (register_status, register_body) = request_json(
-        app.clone(),
-        Method::POST,
-        "/auth/register",
-        json!({
-            "name": "rbac-user",
-            "email": email,
-            "password": password
-        }),
-    )
-    .await;
-    assert_eq!(
-        register_status,
-        StatusCode::OK,
-        "register body: {register_body}"
-    );
-
-    let (login_status, login_body) = request_json(
-        app.clone(),
-        Method::POST,
-        "/auth/login",
-        json!({
-            "email": email,
-            "password": password
-        }),
-    )
-    .await;
-    assert_eq!(login_status, StatusCode::OK, "login body: {login_body}");
-
-    let access_token = login_body["data"]["token"]["access_token"]
-        .as_str()
-        .expect("missing access_token");
-    let refresh_token = login_body["data"]["token"]["refresh_token"]
-        .as_str()
-        .expect("missing refresh_token");
-    let user_id = login_body["data"]["user"]["id"]
-        .as_str()
-        .expect("missing user.id")
-        .parse::<Uuid>()
-        .expect("invalid user.id");
-
-    let claims = jwt::verify_token(access_token, &config.jwt_secret).expect("invalid access token");
+    let claims = jwt::verify_token(&session.access_token, &config.auth.jwt_secret)
+        .expect("invalid access token");
     assert!(
-        claims.roles.iter().any(|r| r == "user"),
+        claims.roles.iter().any(|r| r == RoleKey::USER),
         "claims: {:?}",
         claims
     );
     assert!(
-        claims.scopes.iter().any(|s| s == "users:read"),
+        claims.scopes.iter().any(|s| s == PermissionKey::USERS_READ),
         "claims: {:?}",
         claims
     );
     assert!(
-        !claims.scopes.iter().any(|s| s == "*"),
+        !claims.scopes.iter().any(|s| s == PermissionKey::WILDCARD),
         "normal user should not have wildcard scope, claims: {:?}",
         claims
     );
 
-    let assigned = rbac_repo::assign_role_by_key(&db, user_id, "admin")
+    let assigned = rbac_repo::assign_role_by_key(&db, session.user_id, RoleKey::ADMIN)
         .await
         .expect("assign admin role failed");
     assert!(assigned, "admin role seed not found");
 
-    let (refresh_status, refresh_body) = request_json(
-        app.clone(),
-        Method::POST,
-        "/auth/refresh",
-        json!({ "refresh_token": refresh_token }),
-    )
-    .await;
-    assert_eq!(
-        refresh_status,
-        StatusCode::OK,
-        "refresh body: {refresh_body}"
-    );
+    let refreshed_session = support::refresh_session(app.clone(), &session.refresh_token).await;
+    assert_ne!(session.refresh_token, refreshed_session.refresh_token);
 
-    let refreshed_access_token = refresh_body["data"]["token"]["access_token"]
-        .as_str()
-        .expect("missing refreshed access_token");
-    let refreshed_refresh_token = refresh_body["data"]["token"]["refresh_token"]
-        .as_str()
-        .expect("missing refreshed refresh_token");
-    assert_ne!(refresh_token, refreshed_refresh_token);
-
-    let refreshed_claims = jwt::verify_token(refreshed_access_token, &config.jwt_secret)
-        .expect("invalid refreshed access token");
+    let refreshed_claims =
+        jwt::verify_token(&refreshed_session.access_token, &config.auth.jwt_secret)
+            .expect("invalid refreshed access token");
     assert!(
-        refreshed_claims.roles.iter().any(|r| r == "admin"),
+        refreshed_claims.roles.iter().any(|r| r == RoleKey::ADMIN),
         "refreshed claims should include admin role: {:?}",
         refreshed_claims
     );
     assert!(
-        refreshed_claims.scopes.iter().any(|s| s == "*"),
+        refreshed_claims
+            .scopes
+            .iter()
+            .any(|s| s == PermissionKey::WILDCARD),
         "refreshed claims should include wildcard scope: {:?}",
         refreshed_claims
     );
@@ -180,7 +72,7 @@ async fn login_and_refresh_should_issue_dynamic_claims_from_rbac() {
         app,
         Method::POST,
         "/auth/refresh",
-        json!({ "refresh_token": refresh_token }),
+        json!({ "refresh_token": session.refresh_token }),
     )
     .await;
     assert_eq!(
@@ -193,9 +85,128 @@ async fn login_and_refresh_should_issue_dynamic_claims_from_rbac() {
         Some("AUTH_INVALID_REFRESH_TOKEN")
     );
 
-    sqlx::query("DELETE FROM users WHERE id = $1")
-        .bind(user_id)
-        .execute(&db)
+    support::delete_users(&db, &[session.user_id]).await;
+}
+
+#[tokio::test]
+async fn users_routes_should_require_auth_and_enforce_scopes() {
+    let Some((app, _config, db)) = support::setup_app_with_db().await else {
+        return;
+    };
+
+    let email = format!("users-scope-{}@example.com", Uuid::new_v4());
+    let password = "secret123";
+    let session = support::register_and_login(app.clone(), "scope-user", &email, password).await;
+
+    let (unauthorized_status, unauthorized_body) =
+        request_empty_json_with_auth(app.clone(), Method::GET, "/users", None).await;
+    assert_eq!(
+        unauthorized_status,
+        StatusCode::BAD_REQUEST,
+        "unauthorized body: {unauthorized_body}"
+    );
+    assert_eq!(
+        unauthorized_body["error_code"].as_str(),
+        Some("AUTH_MISSING_AUTHORIZATION_HEADER")
+    );
+
+    let (list_status, list_body) = request_empty_json_with_auth(
+        app.clone(),
+        Method::GET,
+        "/users",
+        Some(&session.access_token),
+    )
+    .await;
+    assert_eq!(list_status, StatusCode::OK, "list body: {list_body}");
+
+    let (forbidden_status, forbidden_body) = request_json_with_auth(
+        app.clone(),
+        Method::POST,
+        "/users",
+        json!({
+            "name": "another-user",
+            "email": format!("admin-only-{}@example.com", Uuid::new_v4()),
+            "password": "secret123"
+        }),
+        Some(&session.access_token),
+    )
+    .await;
+    assert_eq!(
+        forbidden_status,
+        StatusCode::FORBIDDEN,
+        "forbidden body: {forbidden_body}"
+    );
+    assert_eq!(
+        forbidden_body["error_code"].as_str(),
+        Some("AUTH_FORBIDDEN_SCOPE")
+    );
+
+    let assigned = rbac_repo::assign_role_by_key(&db, session.user_id, RoleKey::ADMIN)
         .await
-        .expect("cleanup user failed");
+        .expect("assign admin role failed");
+    assert!(assigned, "admin role seed not found");
+
+    let refreshed_session = support::refresh_session(app.clone(), &session.refresh_token).await;
+    let create_email = format!("admin-created-{}@example.com", Uuid::new_v4());
+    let (create_status, create_body) = request_json_with_auth(
+        app.clone(),
+        Method::POST,
+        "/users",
+        json!({
+            "name": "admin-created",
+            "email": create_email,
+            "password": "secret123"
+        }),
+        Some(&refreshed_session.access_token),
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::OK, "create body: {create_body}");
+
+    let created_user_id = create_body["data"]["id"]
+        .as_str()
+        .expect("missing created user id")
+        .parse::<Uuid>()
+        .expect("invalid created user id");
+
+    support::delete_users(&db, &[created_user_id, session.user_id]).await;
+}
+
+#[tokio::test]
+async fn rbac_seed_should_match_code_keys() {
+    let Some((_app, _config, db)) = support::setup_app_with_db().await else {
+        return;
+    };
+
+    let role_keys = rbac_repo::list_role_keys(&db)
+        .await
+        .expect("list role keys failed");
+    assert_eq!(
+        role_keys,
+        ROLE_KEYS
+            .iter()
+            .map(|key| key.to_string())
+            .collect::<Vec<_>>()
+    );
+
+    let permission_keys = rbac_repo::list_permission_keys(&db)
+        .await
+        .expect("list permission keys failed");
+    assert_eq!(
+        permission_keys,
+        PERMISSION_KEYS
+            .iter()
+            .map(|key| key.to_string())
+            .collect::<Vec<_>>()
+    );
+
+    let role_permissions = rbac_repo::list_role_permission_pairs(&db)
+        .await
+        .expect("list role permission pairs failed");
+    assert_eq!(
+        role_permissions,
+        ROLE_PERMISSION_PAIRS
+            .iter()
+            .map(|(role, permission)| (role.to_string(), permission.to_string()))
+            .collect::<Vec<_>>()
+    );
 }

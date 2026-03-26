@@ -4,15 +4,14 @@ use axum::{
     extract::Request, extract::State, http::header::AUTHORIZATION, middleware::Next,
     response::Response,
 };
-use uuid::Uuid;
 
-use crate::state::AppState;
+use crate::{modules::rbac::context::AccessContext, state::AppState};
 
-use super::{current_user::CurrentUser, jwt};
+use super::jwt;
 
 /// 统一 Bearer Token 鉴权中间件。
 ///
-/// 成功后会在 request extensions 中注入 CurrentUser。
+/// 成功后会在 request extensions 中注入 AccessContext。
 pub async fn require_auth(
     State(state): State<AppState>,
     mut req: Request,
@@ -45,24 +44,20 @@ pub async fn require_auth(
             )],
         ))?;
 
-    let claims = jwt::verify_token(token, &state.config.jwt_secret).map_err(|_| {
+    let claims = jwt::verify_token(token, &state.config.auth.jwt_secret).map_err(|_| {
         AppError::BadRequestWithCode(
             ErrorCode::AuthInvalidToken,
             translate(locale, MessageKey::InvalidToken).to_string(),
         )
     })?;
 
-    let user_id = claims.sub.parse::<Uuid>().map_err(|_| {
+    let access_context = AccessContext::try_from(claims).map_err(|_| {
         AppError::BadRequestWithCode(
             ErrorCode::AuthInvalidTokenSubject,
             translate(locale, MessageKey::InvalidTokenSubject).to_string(),
         )
     })?;
 
-    req.extensions_mut().insert(CurrentUser {
-        user_id,
-        roles: claims.roles,
-        scopes: claims.scopes,
-    });
+    req.extensions_mut().insert(access_context);
     Ok(next.run(req).await)
 }

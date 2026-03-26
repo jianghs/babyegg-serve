@@ -5,6 +5,7 @@ use crate::{
     modules::{
         auth::dto::{LoginRequest, LoginResponse, LogoutRequest, RefreshRequest, RegisterRequest},
         auth::service,
+        identity,
         user::model::UserResponse,
     },
     state::AppState,
@@ -14,7 +15,7 @@ pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> Result<Json<ApiResponse<UserResponse>>, AppError> {
-    let user = service::register(&state, req).await?;
+    let user = identity::service::register_user(&state, req).await?;
     Ok(Json(ApiResponse::ok(user)))
 }
 

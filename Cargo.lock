@@ -47,6 +47,7 @@ dependencies = [
  "axum",
  "http",
  "http-body-util",
+ "serde_json",
  "tower",
 ]
 

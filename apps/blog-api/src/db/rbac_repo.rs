@@ -2,6 +2,44 @@ use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+pub async fn list_role_keys(db: &PgPool) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT role_key
+        FROM roles
+        ORDER BY role_key
+        "#,
+    )
+    .fetch_all(db)
+    .await
+}
+
+pub async fn list_permission_keys(db: &PgPool) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT permission_key
+        FROM permissions
+        ORDER BY permission_key
+        "#,
+    )
+    .fetch_all(db)
+    .await
+}
+
+pub async fn list_role_permission_pairs(db: &PgPool) -> Result<Vec<(String, String)>, sqlx::Error> {
+    sqlx::query_as::<_, (String, String)>(
+        r#"
+        SELECT r.role_key, p.permission_key
+        FROM role_permissions rp
+        JOIN roles r ON r.id = rp.role_id
+        JOIN permissions p ON p.id = rp.permission_id
+        ORDER BY r.role_key, p.permission_key
+        "#,
+    )
+    .fetch_all(db)
+    .await
+}
+
 /// 给用户绑定指定角色（通过 role_key）。
 /// 返回值表示该 role_key 是否存在。
 pub async fn assign_role_by_key(

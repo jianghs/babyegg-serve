@@ -3,18 +3,17 @@ use app_foundation::{
     i18n::{translate, MessageKey},
     ErrorCode, PageResponse,
 };
-use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
-    Argon2,
-};
 use tracing::info;
 use uuid::Uuid;
 
 use crate::{
     db::user_repo,
-    modules::user::{
-        dto::{CreateUserRequest, UpdateUserRequest, UserListResponse},
-        model::UserResponse,
+    modules::{
+        identity,
+        user::{
+            dto::{CreateUserRequest, UpdateUserRequest, UserListResponse},
+            model::UserResponse,
+        },
     },
     state::AppState,
 };
@@ -24,45 +23,7 @@ pub async fn create_user(
     state: &AppState,
     req: CreateUserRequest,
 ) -> Result<UserResponse, AppError> {
-    let locale = state.config.base.default_locale;
-    req.validate(locale)?;
-
-    let existing = user_repo::get_user_by_email(&state.db, &req.email)
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?;
-
-    if existing.is_some() {
-        return Err(AppError::BadRequestWithCode(
-            ErrorCode::UserEmailExists,
-            translate(
-                state.config.base.default_locale,
-                MessageKey::EmailAlreadyExists,
-            )
-            .to_string(),
-        ));
-    }
-
-    let salt = SaltString::generate(&mut OsRng);
-    let password_hash = Argon2::default()
-        .hash_password(req.password.as_bytes(), &salt)
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?
-        .to_string();
-
-    let user = user_repo::create_user(&state.db, &req.name, &req.email, &password_hash)
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?;
+    let user = identity::service::create_user(state, req).await?;
 
     info!(
         message = translate(state.config.base.default_locale, MessageKey::RequestReceived),
@@ -70,20 +31,15 @@ pub async fn create_user(
         email = %user.email
     );
 
-    Ok(user.into())
+    Ok(user)
 }
 
 /// 获取单个用户。
 pub async fn get_user(state: &AppState, id: Uuid) -> Result<UserResponse, AppError> {
     let locale = state.config.base.default_locale;
 
-    let user = user_repo::get_user(&state.db, id)
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?
+    let user = identity::service::get_user(state, id)
+        .await?
         .ok_or(AppError::NotFoundWithCode(
             ErrorCode::NotFound,
             translate(locale, MessageKey::NotFound).to_string(),
@@ -96,17 +52,13 @@ pub async fn get_user(state: &AppState, id: Uuid) -> Result<UserResponse, AppErr
 pub async fn me(state: &AppState, user_id: Uuid) -> Result<UserResponse, AppError> {
     let locale = state.config.base.default_locale;
 
-    let user = user_repo::get_user(&state.db, user_id)
-        .await
-        .map_err(|_| {
-            AppError::InternalWithMessage(
-                translate(locale, MessageKey::InternalServerError).to_string(),
-            )
-        })?
-        .ok_or(AppError::NotFoundWithCode(
-            ErrorCode::NotFound,
-            translate(locale, MessageKey::NotFound).to_string(),
-        ))?;
+    let user =
+        identity::service::get_user(state, user_id)
+            .await?
+            .ok_or(AppError::NotFoundWithCode(
+                ErrorCode::NotFound,
+                translate(locale, MessageKey::NotFound).to_string(),
+            ))?;
 
     Ok(user.into())
 }

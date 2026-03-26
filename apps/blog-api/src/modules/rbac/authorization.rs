@@ -1,12 +1,11 @@
 use app_foundation::i18n::{translate, MessageKey};
 use app_foundation::{AppError, ErrorCode};
 
-use crate::modules::auth::current_user::CurrentUser;
-use crate::state::AppState;
+use crate::{modules::rbac::context::AccessContext, state::AppState};
 
 pub fn require_role(
     state: &AppState,
-    current_user: &CurrentUser,
+    current_user: &AccessContext,
     role: &str,
 ) -> Result<(), AppError> {
     if current_user.has_role(role) {
@@ -21,7 +20,7 @@ pub fn require_role(
 
 pub fn require_scope(
     state: &AppState,
-    current_user: &CurrentUser,
+    current_user: &AccessContext,
     scope: &str,
 ) -> Result<(), AppError> {
     if current_user.has_scope(scope) {

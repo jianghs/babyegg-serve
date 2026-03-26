@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::modules::user::model::User;
+use crate::modules::identity::model::User;
 
 /// 创建用户。
 pub async fn create_user(
