@@ -6,27 +6,46 @@ use std::fmt::{Display, Formatter};
 /// - 不随国际化语言变化
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorCode {
+    /// 通用参数错误。
     InvalidParam,
+    /// 通用权限不足。
     Forbidden,
+    /// 资源不存在。
     NotFound,
+    /// 通用内部错误。
     InternalError,
+    /// 登录凭证无效。
     AuthInvalidCredentials,
+    /// 缺少鉴权请求头。
     AuthMissingAuthorizationHeader,
+    /// 鉴权请求头格式不合法。
     AuthInvalidAuthorizationHeader,
+    /// 访问令牌无效。
     AuthInvalidToken,
+    /// 访问令牌主题字段不合法。
     AuthInvalidTokenSubject,
+    /// 缺少刷新令牌。
     AuthMissingRefreshToken,
+    /// 刷新令牌无效。
     AuthInvalidRefreshToken,
+    /// 缺少所需角色。
     AuthForbiddenRole,
+    /// 缺少所需权限范围。
     AuthForbiddenScope,
+    /// 用户名为空。
     UserNameEmpty,
+    /// 用户邮箱为空。
     UserEmailEmpty,
+    /// 用户密码为空。
     UserPasswordEmpty,
+    /// 用户密码长度不足。
     UserPasswordTooShort,
+    /// 用户邮箱已存在。
     UserEmailExists,
 }
 
 impl ErrorCode {
+    /// 返回稳定的错误码字符串。
     pub fn as_str(self) -> &'static str {
         match self {
             ErrorCode::InvalidParam => "INVALID_PARAM",

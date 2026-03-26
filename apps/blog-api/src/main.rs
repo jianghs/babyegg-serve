@@ -6,6 +6,14 @@ use tracing::info;
 
 use blog_api::{app, config::AppConfig, state::AppState};
 
+/// 应用启动入口。
+///
+/// 启动流程：
+/// - 读取 `.env`
+/// - 初始化日志
+/// - 加载配置并连接数据库
+/// - 按需执行迁移
+/// - 构建路由并启动 HTTP 服务
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();

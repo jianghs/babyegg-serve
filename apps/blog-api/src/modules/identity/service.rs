@@ -1,3 +1,5 @@
+//! 身份域服务负责用户建档、密码哈希与凭证校验。
+
 use app_foundation::i18n::{translate, MessageKey};
 use app_foundation::{AppError, ErrorCode};
 use argon2::password_hash::rand_core::OsRng;
@@ -21,6 +23,7 @@ use crate::{
     state::AppState,
 };
 
+/// 创建普通注册用户，并在成功后自动分配默认 `user` 角色。
 pub async fn register_user(
     state: &AppState,
     req: RegisterRequest,
@@ -35,6 +38,7 @@ pub async fn register_user(
     Ok(user.into())
 }
 
+/// 创建用户记录，但不附带认证会话或默认角色分配。
 pub async fn create_user(
     state: &AppState,
     req: CreateUserRequest,
@@ -47,6 +51,7 @@ pub async fn create_user(
     Ok(user.into())
 }
 
+/// 校验邮箱与密码，并返回完整用户实体供认证流程继续使用。
 pub async fn verify_credentials(
     state: &AppState,
     email: &str,
@@ -84,6 +89,7 @@ pub async fn verify_credentials(
     Ok(user)
 }
 
+/// 按用户 ID 获取内部用户实体。
 pub async fn get_user(state: &AppState, user_id: Uuid) -> Result<Option<User>, AppError> {
     let locale = state.config.base.default_locale;
 
@@ -94,6 +100,7 @@ pub async fn get_user(state: &AppState, user_id: Uuid) -> Result<Option<User>, A
     })
 }
 
+/// 执行用户唯一性检查、密码哈希与数据库建档。
 async fn create_user_record(
     state: &AppState,
     input: &CreateIdentityUser,

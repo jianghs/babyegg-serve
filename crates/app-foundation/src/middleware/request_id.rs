@@ -6,6 +6,7 @@ use axum::{
 };
 use uuid::Uuid;
 
+/// 请求链路追踪头名。
 pub const X_REQUEST_ID: &str = "x-request-id";
 
 /// 为请求注入 request id。

@@ -13,26 +13,36 @@ use crate::validation::ValidationDetail;
 /// 业务项目可在自己的 crate 中继续扩展，或者包装成更细的错误类型。
 #[derive(Debug, Error)]
 pub enum AppError {
+    /// 返回 400，消息来自调用方提供的自由文本。
     #[error("{0}")]
     BadRequest(String),
+    /// 返回 400，并附带机器可读错误码。
     #[error("{1}")]
     BadRequestWithCode(ErrorCode, String),
+    /// 返回 400，并附带字段级校验详情。
     #[error("{1}")]
     BadRequestWithDetails(ErrorCode, String, Vec<ValidationDetail>),
+    /// 返回 403，并附带机器可读错误码。
     #[error("{1}")]
     ForbiddenWithCode(ErrorCode, String),
 
+    /// 返回 404，使用默认消息。
     #[error("not found")]
     NotFound,
+    /// 返回 404，并附带自定义消息。
     #[error("{0}")]
     NotFoundWithMessage(String),
+    /// 返回 404，并附带机器可读错误码。
     #[error("{1}")]
     NotFoundWithCode(ErrorCode, String),
 
+    /// 返回 500，使用默认消息。
     #[error("internal server error")]
     Internal,
+    /// 返回 500，并附带自定义消息。
     #[error("{0}")]
     InternalWithMessage(String),
+    /// 返回 500，并附带机器可读错误码。
     #[error("{1}")]
     InternalWithCode(ErrorCode, String),
 }
@@ -64,6 +74,7 @@ impl IntoResponse for AppError {
 }
 
 impl AppError {
+    /// 将应用错误映射为对应的 HTTP 状态码。
     pub fn status_code(&self) -> StatusCode {
         match self {
             AppError::BadRequest(_)
@@ -79,6 +90,7 @@ impl AppError {
         }
     }
 
+    /// 返回错误对应的机器可读错误码。
     pub fn error_code(&self) -> ErrorCode {
         match self {
             AppError::BadRequest(_) => ErrorCode::InvalidParam,
@@ -92,6 +104,7 @@ impl AppError {
         }
     }
 
+    /// 返回字段级校验详情；非校验类错误时为空。
     pub fn validation_details(&self) -> Option<&[ValidationDetail]> {
         match self {
             AppError::BadRequestWithDetails(_, _, details) => Some(details.as_slice()),

@@ -11,6 +11,7 @@ use crate::{
     state::AppState,
 };
 
+/// 处理用户注册请求。
 pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
@@ -19,6 +20,7 @@ pub async fn register(
     Ok(Json(ApiResponse::ok(user)))
 }
 
+/// 处理登录请求。
 pub async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
@@ -27,6 +29,7 @@ pub async fn login(
     Ok(Json(ApiResponse::ok(result)))
 }
 
+/// 处理 refresh token 续签请求。
 pub async fn refresh(
     State(state): State<AppState>,
     Json(req): Json<RefreshRequest>,
@@ -35,6 +38,7 @@ pub async fn refresh(
     Ok(Json(ApiResponse::ok(result)))
 }
 
+/// 处理登出请求并撤销 refresh token。
 pub async fn logout(
     State(state): State<AppState>,
     Json(req): Json<LogoutRequest>,

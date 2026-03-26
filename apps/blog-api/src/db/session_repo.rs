@@ -2,6 +2,9 @@ use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+/// 持久化 refresh token 会话记录。
+///
+/// 该仓储只负责写入会话数据，不在此处判断业务合法性。
 pub async fn create_refresh_token(
     db: &PgPool,
     user_id: Uuid,
@@ -28,6 +31,11 @@ pub async fn create_refresh_token(
     Ok(())
 }
 
+/// 根据 refresh token 查询仍然有效的用户 ID。
+///
+/// “有效”定义为：
+/// - `revoked_at IS NULL`
+/// - `expires_at > now`
 pub async fn find_valid_refresh_token_user_id(
     db: &PgPool,
     refresh_token: &str,
@@ -50,6 +58,9 @@ pub async fn find_valid_refresh_token_user_id(
     .await
 }
 
+/// 撤销 refresh token，返回是否成功命中一条未撤销记录。
+///
+/// 若返回 `false`，通常表示 token 不存在，或此前已经被撤销。
 pub async fn revoke_refresh_token(db: &PgPool, refresh_token: &str) -> Result<bool, sqlx::Error> {
     let now = OffsetDateTime::now_utc();
 

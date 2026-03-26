@@ -12,6 +12,7 @@ pub struct ApiResponse<T> {
 }
 
 impl<T> ApiResponse<T> {
+    /// 构造标准成功响应。
     pub fn ok(data: T) -> Self {
         Self {
             code: 0,

@@ -1,3 +1,5 @@
+//! 认证会话服务负责登录、刷新与登出流程编排。
+
 use app_foundation::i18n::{translate, MessageKey};
 use app_foundation::{AppError, ErrorCode};
 
@@ -13,7 +15,13 @@ use crate::{
     state::AppState,
 };
 
-/// 登录。
+/// 校验用户凭证并签发新的访问令牌与刷新令牌。
+///
+/// 处理流程：
+/// - 校验登录请求的基础字段
+/// - 通过身份域校验邮箱与密码
+/// - 生成 access token
+/// - 创建并持久化 refresh token
 pub async fn login(state: &AppState, req: LoginRequest) -> Result<LoginResponse, AppError> {
     let locale = state.config.base.default_locale;
     req.validate(locale)?;
@@ -28,7 +36,15 @@ pub async fn login(state: &AppState, req: LoginRequest) -> Result<LoginResponse,
     })
 }
 
-/// 使用 refresh_token 换取新的 access_token + refresh_token。
+/// 使用 refresh token 轮换出一组新的访问令牌与刷新令牌。
+///
+/// 当前实现采用 refresh token 轮换策略：
+/// - 旧 refresh token 必须有效
+/// - 旧 refresh token 会先被撤销
+/// - 成功后返回一组新的 access token 与 refresh token
+///
+/// 若 refresh token 无效、已撤销或已过期，返回
+/// [`ErrorCode::AuthInvalidRefreshToken`]。
 pub async fn refresh(state: &AppState, req: RefreshRequest) -> Result<LoginResponse, AppError> {
     let locale = state.config.base.default_locale;
     req.validate(locale)?;
@@ -75,7 +91,10 @@ pub async fn refresh(state: &AppState, req: RefreshRequest) -> Result<LoginRespo
     })
 }
 
-/// 撤销 refresh_token。
+/// 撤销指定 refresh token，使其后续不能再用于续签。
+///
+/// 若传入 token 不存在、已被撤销或不再有效，返回
+/// [`ErrorCode::AuthInvalidRefreshToken`]。
 pub async fn logout(state: &AppState, req: LogoutRequest) -> Result<(), AppError> {
     let locale = state.config.base.default_locale;
     req.validate(locale)?;
@@ -98,6 +117,9 @@ pub async fn logout(state: &AppState, req: LogoutRequest) -> Result<(), AppError
     Ok(())
 }
 
+/// 生成访问令牌与刷新令牌，并持久化刷新会话。
+///
+/// 该函数内部会根据 RBAC 当前状态动态构建 JWT 中的角色与权限声明。
 async fn issue_token_pair(
     state: &AppState,
     user_id: uuid::Uuid,

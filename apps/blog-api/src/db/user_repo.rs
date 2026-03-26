@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::modules::identity::model::User;
 
-/// 创建用户。
+/// 创建用户并返回完整用户记录。
+///
+/// 唯一约束冲突等数据库错误会原样以 `sqlx::Error` 向上抛出。
 pub async fn create_user(
     db: &PgPool,
     name: &str,
@@ -31,7 +33,9 @@ pub async fn create_user(
     .await
 }
 
-/// 按用户 ID 查询。
+/// 按用户 ID 查询用户。
+///
+/// 未命中时返回 `Ok(None)`。
 pub async fn get_user(db: &PgPool, id: Uuid) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         r#"
@@ -46,6 +50,8 @@ pub async fn get_user(db: &PgPool, id: Uuid) -> Result<Option<User>, sqlx::Error
 }
 
 /// 按邮箱查询用户。
+///
+/// 未命中时返回 `Ok(None)`。
 pub async fn get_user_by_email(db: &PgPool, email: &str) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         r#"
@@ -59,7 +65,9 @@ pub async fn get_user_by_email(db: &PgPool, email: &str) -> Result<Option<User>,
     .await
 }
 
-/// 查询分页用户列表。
+/// 查询分页用户列表，按创建时间倒序返回。
+///
+/// 该函数假定上游已完成分页参数校验。
 pub async fn list_users(db: &PgPool, page: i64, page_size: i64) -> Result<Vec<User>, sqlx::Error> {
     let offset = (page - 1) * page_size;
 
@@ -78,6 +86,8 @@ pub async fn list_users(db: &PgPool, page: i64, page_size: i64) -> Result<Vec<Us
 }
 
 /// 查询用户总数。
+///
+/// 供分页响应计算总页数使用。
 pub async fn count_users(db: &PgPool) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar::<_, i64>(
         r#"
@@ -89,7 +99,9 @@ pub async fn count_users(db: &PgPool) -> Result<i64, sqlx::Error> {
     .await
 }
 
-/// 更新用户名称。
+/// 更新用户名称并返回更新后的用户记录。
+///
+/// 未命中时返回 `Ok(None)`。
 pub async fn update_user_name(
     db: &PgPool,
     id: Uuid,
@@ -112,7 +124,9 @@ pub async fn update_user_name(
     .await
 }
 
-/// 删除用户。
+/// 删除用户，返回是否实际删除了记录。
+///
+/// 该返回值用于上游区分“删除成功”和“目标不存在”。
 pub async fn delete_user(db: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         r#"

@@ -8,12 +8,16 @@ use crate::locale::Locale;
 /// 这里放多个业务服务都可能需要的公共配置项。
 #[derive(Debug, Clone)]
 pub struct BaseConfig {
+    /// 服务监听地址。
     pub host: String,
+    /// 服务监听端口。
     pub port: u16,
+    /// 默认语言区域。
     pub default_locale: Locale,
 }
 
 impl BaseConfig {
+    /// 从环境变量加载基础配置。
     pub fn from_env() -> Result<Self> {
         let locale = std::env::var("DEFAULT_LOCALE").unwrap_or_else(|_| "zh-CN".to_string());
 

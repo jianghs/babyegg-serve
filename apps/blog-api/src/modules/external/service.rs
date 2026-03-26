@@ -5,6 +5,7 @@ use app_foundation::{
 
 use crate::{modules::external::dto::HttpBinIpResponse, state::AppState};
 
+/// 调用外部 `httpbin` 服务获取当前出口 IP。
 pub async fn fetch_ip(state: &AppState) -> Result<HttpBinIpResponse, AppError> {
     let locale = state.config.base.default_locale;
     let url = format!("{}/ip", state.config.httpbin_base_url.trim_end_matches('/'));

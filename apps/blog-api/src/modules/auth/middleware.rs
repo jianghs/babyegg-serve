@@ -11,7 +11,17 @@ use super::jwt;
 
 /// 统一 Bearer Token 鉴权中间件。
 ///
-/// 成功后会在 request extensions 中注入 AccessContext。
+/// 典型请求头格式：
+/// - `Authorization: Bearer <access_token>`
+///
+/// 处理流程：
+/// - 校验 `Authorization` 请求头存在
+/// - 校验前缀必须是 `Bearer `
+/// - 校验 JWT 签名与过期时间
+/// - 将解析后的 [`AccessContext`]
+///   注入到 request extensions
+///
+/// 成功后下游 handler 可通过 `Extension<AccessContext>` 直接读取当前访问主体。
 pub async fn require_auth(
     State(state): State<AppState>,
     mut req: Request,

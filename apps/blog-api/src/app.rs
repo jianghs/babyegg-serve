@@ -12,6 +12,13 @@ use tower_http::{
 use crate::{modules, state::AppState};
 
 /// 构建业务服务的 HTTP 路由。
+///
+/// 当前路由装配约定：
+/// - `/health` 与认证接口默认公开
+/// - `/users/*` 默认挂载认证中间件
+/// - `/external/ip` 作为外部服务调用示例，当前保持公开
+///
+/// 全局中间件顺序上会统一挂载 request id、HTTP trace 和 CORS。
 pub fn build_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)

@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SortOrder {
+    /// 升序排列。
     Asc,
+    /// 降序排列。
     Desc,
 }
 
@@ -16,20 +18,32 @@ pub enum SortOrder {
 /// - filter: 预留通用过滤表达式（具体语义由业务定义）
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ListQuery {
+    /// 页码，从 1 开始；为空时由 `normalize` 填充默认值。
     pub page: Option<i64>,
+    /// 每页条数；为空时由 `normalize` 填充默认值。
     pub page_size: Option<i64>,
+    /// 排序字段名，具体可选值由业务接口自行约束。
     pub sort: Option<String>,
+    /// 排序方向。
     pub order: Option<SortOrder>,
+    /// 预留过滤表达式。
     pub filter: Option<String>,
 }
 
+/// 归一化后的分页参数。
+///
+/// 该结构保证页码和页容量已经过默认值填充与边界裁剪，
+/// 适合直接传入仓储层或分页计算逻辑。
 #[derive(Debug, Clone, Copy)]
 pub struct NormalizedListQuery {
+    /// 归一化后的页码。
     pub page: i64,
+    /// 归一化后的每页条数。
     pub page_size: i64,
 }
 
 impl ListQuery {
+    /// 将原始查询参数归一化为可直接执行分页查询的结构。
     pub fn normalize(
         self,
         default_page: i64,

@@ -4,27 +4,47 @@ use crate::locale::Locale;
 /// 只放公共基础设施日志，不放业务特定文案。
 #[derive(Debug, Clone, Copy)]
 pub enum MessageKey {
+    /// 服务启动日志。
     ServerStarted,
+    /// 服务停止日志。
     ServerStopped,
+    /// 收到请求日志。
     RequestReceived,
+    /// 通用 500 文案。
     InternalServerError,
+    /// 姓名为空。
     NameCannotBeEmpty,
+    /// 邮箱为空。
     EmailCannotBeEmpty,
+    /// 密码为空。
     PasswordCannotBeEmpty,
+    /// 密码过短。
     PasswordTooShort,
+    /// 邮箱已存在。
     EmailAlreadyExists,
+    /// 登录凭证无效。
     InvalidEmailOrPassword,
+    /// 缺少鉴权请求头。
     MissingAuthorizationHeader,
+    /// 鉴权请求头格式错误。
     InvalidAuthorizationHeader,
+    /// 访问令牌无效。
     InvalidToken,
+    /// 访问令牌主题无效。
     InvalidTokenSubject,
+    /// 缺少刷新令牌。
     MissingRefreshToken,
+    /// 刷新令牌无效。
     InvalidRefreshToken,
+    /// 角色权限不足。
     ForbiddenRole,
+    /// Scope 权限不足。
     ForbiddenScope,
+    /// 资源不存在。
     NotFound,
 }
 
+/// 根据语言区域和消息键返回对应文案。
 pub fn translate(locale: Locale, key: MessageKey) -> &'static str {
     match locale {
         Locale::ZhCn => match key {

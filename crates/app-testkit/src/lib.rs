@@ -1,3 +1,8 @@
+//! `app-testkit` 提供面向 Axum 服务的测试辅助函数。
+//!
+//! 这些工具函数用于减少集成测试中的 HTTP 请求构造、鉴权头拼接
+//! 与 JSON 响应解析样板代码。
+
 use std::fmt::Debug;
 
 use axum::body::Body;
@@ -25,6 +30,7 @@ where
     (status, text)
 }
 
+/// 发送 JSON 请求，并解析 JSON 响应。
 pub async fn request_json<S>(
     app: S,
     method: Method,
@@ -39,6 +45,7 @@ where
     request_json_with_auth(app, method, uri, payload, None).await
 }
 
+/// 发送带可选 Bearer Token 的 JSON 请求，并解析 JSON 响应。
 pub async fn request_json_with_auth<S>(
     app: S,
     method: Method,
@@ -72,6 +79,7 @@ where
     (status, value)
 }
 
+/// 发送无请求体但携带 `content-type: application/json` 的请求。
 pub async fn request_empty_json_with_auth<S>(
     app: S,
     method: Method,

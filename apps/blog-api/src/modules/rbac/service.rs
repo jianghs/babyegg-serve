@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::{db::rbac_repo, modules::rbac::keys::RoleKey, state::AppState};
 
+/// 为用户分配指定角色；若角色键不存在则视为内部错误。
 pub async fn assign_role_or_fail(
     state: &AppState,
     user_id: Uuid,
@@ -28,6 +29,9 @@ pub async fn assign_role_or_fail(
     Ok(())
 }
 
+/// 构建 JWT 所需的角色与权限声明。
+///
+/// 当用户尚未分配任何角色时，会自动补一个默认 `user` 角色。
 pub async fn build_claims(
     state: &AppState,
     user_id: Uuid,

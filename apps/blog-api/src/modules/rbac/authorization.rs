@@ -3,6 +3,7 @@ use app_foundation::{AppError, ErrorCode};
 
 use crate::{modules::rbac::context::AccessContext, state::AppState};
 
+/// 要求当前访问主体具备指定角色，否则返回 403。
 pub fn require_role(
     state: &AppState,
     current_user: &AccessContext,
@@ -18,6 +19,7 @@ pub fn require_role(
     ))
 }
 
+/// 要求当前访问主体具备指定权限，否则返回 403。
 pub fn require_scope(
     state: &AppState,
     current_user: &AccessContext,

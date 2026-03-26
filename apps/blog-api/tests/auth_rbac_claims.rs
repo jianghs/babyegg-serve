@@ -1,3 +1,10 @@
+//! 认证与 RBAC 相关的集成测试。
+//!
+//! 这里重点验证三类行为：
+//! - 登录与 refresh 后的 JWT claims 是否与数据库中的 RBAC 状态保持一致
+//! - 用户接口是否正确接入认证与 scope 校验
+//! - 数据库中的 RBAC seed 是否与代码常量保持同步
+
 use app_testkit::{request_empty_json_with_auth, request_json, request_json_with_auth};
 use blog_api::{
     db::rbac_repo,
@@ -16,6 +23,7 @@ use uuid::Uuid;
 mod support;
 
 #[tokio::test]
+/// 验证登录与 refresh 后签发的 claims 会动态反映 RBAC 变更。
 async fn login_and_refresh_should_issue_dynamic_claims_from_rbac() {
     let Some((app, config, db)) = support::setup_app_with_db().await else {
         return;
@@ -89,6 +97,7 @@ async fn login_and_refresh_should_issue_dynamic_claims_from_rbac() {
 }
 
 #[tokio::test]
+/// 验证用户接口会要求认证，并按 scope 限制访问能力。
 async fn users_routes_should_require_auth_and_enforce_scopes() {
     let Some((app, _config, db)) = support::setup_app_with_db().await else {
         return;
@@ -172,6 +181,7 @@ async fn users_routes_should_require_auth_and_enforce_scopes() {
 }
 
 #[tokio::test]
+/// 验证数据库中的角色、权限与角色权限映射 seed 与代码常量一致。
 async fn rbac_seed_should_match_code_keys() {
     let Some((_app, _config, db)) = support::setup_app_with_db().await else {
         return;

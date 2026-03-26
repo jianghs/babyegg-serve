@@ -34,6 +34,7 @@
 - 使用 `rustfmt` 默认风格（4 空格缩进）。
 - 文件/函数使用 `snake_case`，结构体/枚举使用 `PascalCase`。
 - 按模块边界组织代码，避免在 `handler` 写业务逻辑，业务逻辑放 `service`。
+- Rust 代码新增或修改公共 API、核心领域模型、关键服务函数时，优先补充中文 `rustdoc` 注释，统一使用 `///` 或模块级 `//!` 格式说明职责、参数语义与边界。
 - 面向 API 的机器可读字段优先使用枚举，避免自由文本。
 - 不要把注册、密码哈希、凭证校验重新塞回 `modules/auth` 或 `modules/user`，统一走 `modules/identity`。
 - 不要在 handler 中直接写角色/权限判断，统一走 `modules/rbac/authorization.rs`。
