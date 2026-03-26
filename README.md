@@ -2,6 +2,12 @@
 
 一个面向 Web 开发、可长期复用的 Rust 后端 workspace 模板。当前包含一个完整示例服务 `apps/blog-api`，并已实现统一错误码、结构化校验错误、认证中间件、RBAC 持久化与动态 claims、refresh token 流程。
 
+当前 `blog-api` 的认证相关能力已按 `identity / auth / rbac / user` 分层：
+- `identity`：注册、密码哈希、凭证校验、用户创建
+- `auth`：`login / refresh / logout`、JWT、session/refresh token
+- `rbac`：授权上下文、权限判断、角色/权限常量与矩阵
+- `user`：用户资源接口，不再承载认证逻辑
+
 ## 1. 项目结构
 
 ```text
@@ -35,17 +41,31 @@ rust-platform-template/
 ### 2.2 `crates/app-testkit`
 
 - `get_text`：对 Axum Router 发起测试请求并读取响应文本
+- `request_json`：发送 JSON 请求并解析 JSON 响应
+- `request_json_with_auth`：发送带 Bearer Token 的 JSON 请求
+- `request_empty_json_with_auth`：发送空 JSON 请求并附带 Bearer Token
 
 ### 2.3 `apps/blog-api`
 
-- 用户注册/登录（Argon2 + JWT）
+- 身份域：用户注册、用户创建、密码哈希与凭证校验
+- 认证域：登录、refresh token 轮换、登出撤销、JWT 签发与校验
+- 授权域：`AccessContext`、RBAC 持久化、动态 claims、角色/权限矩阵
 - Refresh Token 轮换与登出撤销
 - 用户 CRUD 与分页查询
-- 认证中间件注入 `CurrentUser`
+- 认证中间件注入 `rbac::context::AccessContext`
 - RBAC 持久化：`roles` / `permissions` / `user_roles` / `role_permissions`
-- 授权能力：`require_role` / `require_scope`（`/users/me` 已示例接入 `users:read` scope 校验）
+- 授权能力：`require_role` / `require_scope`
+- `/users`、`/users/{id}`、`/users/me` 已接入认证与 RBAC 校验：
+  - 读操作要求 `users:read`
+  - 写操作要求 `users:write`
 - 外部 HTTP 调用示例：`/external/ip`
 - 启动时自动 migration（可通过开发开关跳过）
+- JWT 配置已收口到 `AppConfig.auth`
+- 角色/权限常量与矩阵位于：
+  - `apps/blog-api/src/modules/rbac/keys.rs`
+  - `apps/blog-api/src/modules/rbac/catalog.rs`
+- 认证/RBAC 重构说明见：
+  - `apps/blog-api/docs/auth-rbac-refactor.md`
 
 ## 3. API 列表
 
@@ -55,12 +75,23 @@ rust-platform-template/
 - `POST /auth/refresh`
 - `POST /auth/logout`
 - `GET /users/me`（需要 Bearer Token）
-- `POST /users`
-- `GET /users?page=1&page_size=10&sort=...&order=...&filter=...`
-- `GET /users/{id}`
-- `PUT /users/{id}`
-- `DELETE /users/{id}`
+- `POST /users`（需要 Bearer Token + `users:write`）
+- `GET /users?page=1&page_size=10&sort=...&order=...&filter=...`（需要 Bearer Token + `users:read`）
+- `GET /users/{id}`（需要 Bearer Token + `users:read`）
+- `PUT /users/{id}`（需要 Bearer Token + `users:write`）
+- `DELETE /users/{id}`（需要 Bearer Token + `users:write`）
 - `GET /external/ip`
+
+## 3.1 测试辅助入口
+
+- 通用 HTTP 测试辅助：`crates/app-testkit/src/lib.rs`
+- blog-api 专属测试辅助：`apps/blog-api/tests/support/mod.rs`
+
+目前已沉淀的辅助包括：
+- app/db 初始化
+- 注册并登录获取测试会话
+- refresh 获取新测试会话
+- 测试用户清理
 
 ## 4. 接口时序图
 
@@ -72,14 +103,14 @@ sequenceDiagram
     participant Client
     participant Router
     participant Handler as auth::handler::register
-    participant Service as auth::service::register
+    participant Service as identity::service::register_user
     participant UserRepo as db::user_repo
     participant RbacRepo as db::rbac_repo
     participant DB
 
     Client->>Router: POST /auth/register
     Router->>Handler: register
-    Handler->>Service: service::register(req)
+    Handler->>Service: identity::service::register_user(req)
     Service->>Service: req.validate
     Service->>UserRepo: get_user_by_email
     UserRepo->>DB: SELECT users by email
@@ -106,7 +137,7 @@ sequenceDiagram
     participant UserRepo as db::user_repo
     participant RbacRepo as db::rbac_repo
     participant Jwt as auth::jwt
-    participant AuthRepo as db::auth_repo
+    participant SessionRepo as db::session_repo
     participant DB
 
     Client->>Router: POST /auth/login
@@ -121,8 +152,8 @@ sequenceDiagram
     RbacRepo->>DB: SELECT roles/scopes
     RbacRepo-->>Service: roles, scopes
     Service->>Jwt: create_token(...roles,scopes)
-    Service->>AuthRepo: create_refresh_token
-    AuthRepo->>DB: INSERT refresh_tokens
+    Service->>SessionRepo: create_refresh_token
+    SessionRepo->>DB: INSERT refresh_tokens
     Service-->>Handler: LoginResponse
     Handler-->>Client: 200/400/500
 ```
@@ -145,7 +176,7 @@ sequenceDiagram
     Router->>AuthMW: 鉴权中间件
     AuthMW->>Jwt: verify_token
     Jwt-->>AuthMW: claims(sub,roles,scopes)
-    AuthMW-->>Router: 注入 CurrentUser
+    AuthMW-->>Router: 注入 AccessContext
     Router->>Handler: me
     Handler->>Service: service::me(user_id)
     Service->>UserRepo: get_user(user_id)
@@ -163,22 +194,28 @@ sequenceDiagram
     autonumber
     participant Client
     participant Router
+    participant AuthMW as auth::middleware::require_auth
     participant Handler as user::handler::create_user
     participant Service as user::service::create_user
+    participant Identity as identity::service::create_user
     participant UserRepo as db::user_repo
     participant DB
 
     Client->>Router: POST /users
+    Router->>AuthMW: 鉴权中间件
     Router->>Handler: create_user
+    Handler->>Handler: require_scope(users:write)
     Handler->>Service: service::create_user(req)
-    Service->>Service: req.validate
-    Service->>UserRepo: get_user_by_email
+    Service->>Identity: create_user(req)
+    Identity->>Identity: CreateIdentityUser.validate
+    Identity->>UserRepo: get_user_by_email
     UserRepo->>DB: SELECT users by email
-    UserRepo-->>Service: existing/null
-    Service->>Service: Argon2 hash password
-    Service->>UserRepo: create_user
+    UserRepo-->>Identity: existing/null
+    Identity->>Identity: Argon2 hash password
+    Identity->>UserRepo: create_user
     UserRepo->>DB: INSERT users
-    UserRepo-->>Service: user
+    UserRepo-->>Identity: user
+    Identity-->>Service: UserResponse
     Service-->>Handler: UserResponse
     Handler-->>Client: 200/400/500
 ```
@@ -190,13 +227,16 @@ sequenceDiagram
     autonumber
     participant Client
     participant Router
+    participant AuthMW as auth::middleware::require_auth
     participant Handler as user::handler::list_users
     participant Service as user::service::list_users
     participant UserRepo as db::user_repo
     participant DB
 
     Client->>Router: GET /users?page=&page_size=
+    Router->>AuthMW: 鉴权中间件
     Router->>Handler: list_users
+    Handler->>Handler: require_scope(users:read)
     Handler->>Service: service::list_users(query)
     Service->>Service: ListQuery.normalize
     Service->>UserRepo: list_users(page,page_size)
@@ -216,13 +256,16 @@ sequenceDiagram
     autonumber
     participant Client
     participant Router
+    participant AuthMW as auth::middleware::require_auth
     participant Handler as user::handler::update_user
     participant Service as user::service::update_user
     participant UserRepo as db::user_repo
     participant DB
 
     Client->>Router: PUT /users/{id}
+    Router->>AuthMW: 鉴权中间件
     Router->>Handler: update_user
+    Handler->>Handler: require_scope(users:write)
     Handler->>Service: service::update_user(id, req)
     Service->>Service: req.validate
     Service->>UserRepo: update_user_name
@@ -239,13 +282,16 @@ sequenceDiagram
     autonumber
     participant Client
     participant Router
+    participant AuthMW as auth::middleware::require_auth
     participant Handler as user::handler::delete_user
     participant Service as user::service::delete_user
     participant UserRepo as db::user_repo
     participant DB
 
     Client->>Router: DELETE /users/{id}
+    Router->>AuthMW: 鉴权中间件
     Router->>Handler: delete_user
+    Handler->>Handler: require_scope(users:write)
     Handler->>Service: service::delete_user(id)
     Service->>UserRepo: delete_user(id)
     UserRepo->>DB: DELETE FROM users
@@ -263,7 +309,7 @@ sequenceDiagram
     participant Router
     participant Handler as auth::handler::refresh
     participant Service as auth::service::refresh
-    participant AuthRepo as db::auth_repo
+    participant SessionRepo as db::session_repo
     participant RbacRepo as db::rbac_repo
     participant UserRepo as db::user_repo
     participant Jwt as auth::jwt
@@ -273,15 +319,15 @@ sequenceDiagram
     Router->>Handler: refresh
     Handler->>Service: service::refresh(req)
     Service->>Service: req.validate
-    Service->>AuthRepo: find_valid_refresh_token_user_id
-    AuthRepo->>DB: SELECT valid refresh_token
-    AuthRepo-->>Service: user_id/null
-    Service->>AuthRepo: revoke_refresh_token(old_token)
-    AuthRepo->>DB: UPDATE refresh_tokens SET revoked_at
+    Service->>SessionRepo: find_valid_refresh_token_user_id
+    SessionRepo->>DB: SELECT valid refresh_token
+    SessionRepo-->>Service: user_id/null
+    Service->>SessionRepo: revoke_refresh_token(old_token)
+    SessionRepo->>DB: UPDATE refresh_tokens SET revoked_at
     Service->>UserRepo: get_user(user_id)
-    Service->>RbacRepo: get_user_roles_and_scopes(user_id)
+    Service->>RbacRepo: build_claims(user_id)
     Service->>Jwt: create_token(...roles,scopes)
-    Service->>AuthRepo: create_refresh_token(new_token)
+    Service->>SessionRepo: create_refresh_token(new_token)
     Handler-->>Client: 200 + 新 token 对
 ```
 
@@ -294,16 +340,16 @@ sequenceDiagram
     participant Router
     participant Handler as auth::handler::logout
     participant Service as auth::service::logout
-    participant AuthRepo as db::auth_repo
+    participant SessionRepo as db::session_repo
     participant DB
 
     Client->>Router: POST /auth/logout
     Router->>Handler: logout
     Handler->>Service: service::logout(req)
     Service->>Service: req.validate
-    Service->>AuthRepo: revoke_refresh_token(token)
-    AuthRepo->>DB: UPDATE refresh_tokens SET revoked_at
-    AuthRepo-->>Service: rows_affected
+    Service->>SessionRepo: revoke_refresh_token(token)
+    SessionRepo->>DB: UPDATE refresh_tokens SET revoked_at
+    SessionRepo-->>Service: rows_affected
     Service-->>Handler: ok / invalid_refresh_token
     Handler-->>Client: 200/400
 ```
@@ -345,7 +391,7 @@ sequenceDiagram
 - Claims 动态生成：登录/刷新时从 RBAC 表实时查询 `roles/scopes` 并签发
 - Refresh Token：数据库持久化，`/auth/refresh` 会执行轮换（旧 token 撤销，新 token 下发）
 - Logout：`/auth/logout` 撤销指定 refresh token
-- 认证：`auth::middleware::require_auth` 统一解析 Bearer 并注入 `CurrentUser`
+- 认证：`auth::middleware::require_auth` 统一解析 Bearer 并注入 `rbac::context::AccessContext`
 - 授权：`auth::authorization::{require_role, require_scope}`，当前示例在 `/users/me` 使用 `require_scope("users:read")`
 - 注册默认角色：新用户注册后自动绑定 `user` 角色；历史用户登录时会自动补齐默认角色
 
