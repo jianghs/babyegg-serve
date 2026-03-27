@@ -36,6 +36,7 @@
 - 按模块边界组织代码，避免在 `handler` 写业务逻辑，业务逻辑放 `service`。
 - Rust 代码新增或修改公共 API、核心领域模型、关键服务函数时，优先补充中文 `rustdoc` 注释，统一使用 `///` 或模块级 `//!` 格式说明职责、参数语义与边界。
 - 面向 API 的机器可读字段优先使用枚举，避免自由文本。
+- 日志统一使用项目日志组件：运行时代码与测试代码都优先使用 `app_foundation::logging::init_tracing` 配合 `tracing` 宏输出日志，不要直接使用 `println!`、`eprintln!` 或 `dbg!`。
 - 不要把注册、密码哈希、凭证校验重新塞回 `modules/auth` 或 `modules/user`，统一走 `modules/identity`。
 - 不要在 handler 中直接写角色/权限判断，统一走 `modules/rbac/authorization.rs`。
 - 不要在业务代码中散落角色/权限魔法字符串，统一使用 `modules/rbac/keys.rs` 与 `modules/rbac/catalog.rs`。

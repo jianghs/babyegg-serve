@@ -3,6 +3,9 @@
 //! 这里封装了应用构建、数据库初始化、认证会话创建与测试数据清理，
 //! 以减少各测试文件中的重复样板代码。
 
+use std::sync::Once;
+
+use app_foundation::logging::init_tracing;
 use app_testkit::request_json;
 use axum::Router;
 use blog_api::{
@@ -15,9 +18,17 @@ use blog_api::{
 use http::{Method, StatusCode};
 use serde_json::json;
 use sqlx::PgPool;
+use tracing::{info, warn};
 use uuid::Uuid;
 
+static TEST_LOGGING_INIT: Once = Once::new();
+
+fn init_test_logging() {
+    TEST_LOGGING_INIT.call_once(init_tracing);
+}
+
 #[allow(dead_code)]
+/// 测试过程中可复用的一组认证会话信息。
 #[derive(Debug, Clone)]
 pub struct AuthSession {
     /// 当前登录用户 ID。
@@ -32,6 +43,11 @@ pub struct AuthSession {
 ///
 /// 默认会优先读取环境中的 `DATABASE_URL`，否则回退到本地开发数据库地址。
 pub fn test_config() -> AppConfig {
+    init_test_logging();
+    dotenvy::from_filename(".env")
+        .or_else(|_| dotenvy::from_filename("apps/blog-api/.env"))
+        .ok();
+
     AppConfig {
         base: app_foundation::BaseConfig {
             host: "127.0.0.1".to_string(),
@@ -79,13 +95,40 @@ pub async fn setup_app_with_db() -> Option<(Router, AppConfig, PgPool)> {
     {
         Ok(pool) => pool,
         Err(err) => {
-            eprintln!("skip test: cannot connect database: {err}");
+            warn!(error = %err, "skip test: cannot connect database");
             return None;
         }
     };
 
+    let db_identity = match sqlx::query_as::<_, (Option<String>, Option<i32>, String, String)>(
+        r#"
+        SELECT
+            inet_server_addr()::text,
+            inet_server_port(),
+            current_database(),
+            current_user
+        "#,
+    )
+    .fetch_one(&pool)
+    .await
+    {
+        Ok(identity) => identity,
+        Err(err) => {
+            warn!(error = %err, "skip test: cannot inspect database identity");
+            return None;
+        }
+    };
+
+    info!(
+        addr = ?db_identity.0,
+        port = ?db_identity.1,
+        database = %db_identity.2,
+        user = %db_identity.3,
+        "test db connected"
+    );
+
     if let Err(err) = sqlx::migrate!("./migrations").run(&pool).await {
-        eprintln!("skip test: cannot run migrations: {err}");
+        warn!(error = %err, "skip test: cannot run migrations");
         return None;
     }
 
@@ -189,6 +232,8 @@ pub async fn refresh_session(app: Router, refresh_token: &str) -> AuthSession {
 
 #[allow(dead_code)]
 /// 直接在数据库中授予管理员角色，并通过 refresh 获取带新 claims 的会话。
+///
+/// 该辅助函数主要用于需要先以普通用户登录、再在测试中提升权限的场景。
 pub async fn promote_to_admin(app: Router, db: &PgPool, session: AuthSession) -> AuthSession {
     let assigned = rbac_repo::assign_role_by_key(db, session.user_id, RoleKey::ADMIN)
         .await

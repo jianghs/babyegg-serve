@@ -1,3 +1,9 @@
+//! RBAC 管理接口相关的集成测试。
+//!
+//! 这里重点验证两类行为：
+//! - RBAC 管理路由是否只允许管理员访问
+//! - 管理员是否可以查询角色/权限并给用户分配角色
+
 use app_testkit::{request_json, request_json_with_auth};
 use http::{Method, StatusCode};
 use serde_json::json;
@@ -6,6 +12,7 @@ use uuid::Uuid;
 mod support;
 
 #[tokio::test]
+/// 验证 RBAC 管理接口会拒绝非管理员访问。
 async fn rbac_management_routes_should_require_admin_role() {
     let Some((app, _config, db)) = support::setup_app_with_db().await else {
         return;
@@ -37,6 +44,7 @@ async fn rbac_management_routes_should_require_admin_role() {
 }
 
 #[tokio::test]
+/// 验证管理员可以管理用户角色并查看最新访问上下文。
 async fn admin_should_manage_user_roles_and_access() {
     let Some((app, _config, db)) = support::setup_app_with_db().await else {
         return;

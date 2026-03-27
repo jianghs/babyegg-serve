@@ -1,3 +1,10 @@
+//! 认证会话管理相关的集成测试。
+//!
+//! 这里重点验证三类行为：
+//! - 会话管理接口是否正确要求认证
+//! - 当前用户是否可以查看并撤销自己的指定会话
+//! - 全量撤销后旧 refresh token 是否全部失效
+
 use app_testkit::{request_empty_json_with_auth, request_json};
 use http::{Method, StatusCode};
 use serde_json::json;
@@ -6,6 +13,7 @@ use uuid::Uuid;
 mod support;
 
 #[tokio::test]
+/// 验证会话管理接口会要求 Bearer Token。
 async fn session_routes_should_require_auth() {
     let (app, _config) = support::setup_app_lazy();
 
@@ -19,6 +27,7 @@ async fn session_routes_should_require_auth() {
 }
 
 #[tokio::test]
+/// 验证当前用户可以列出自己的会话并撤销指定会话。
 async fn user_should_list_and_revoke_sessions() {
     let Some((app, _config, db)) = support::setup_app_with_db().await else {
         return;
@@ -100,6 +109,7 @@ async fn user_should_list_and_revoke_sessions() {
 }
 
 #[tokio::test]
+/// 验证撤销全部会话后，已有 refresh token 会全部失效。
 async fn revoke_all_sessions_should_invalidate_all_refresh_tokens() {
     let Some((app, _config, db)) = support::setup_app_with_db().await else {
         return;
