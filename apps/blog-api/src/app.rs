@@ -35,7 +35,14 @@ pub fn build_router(state: AppState) -> Router {
     let user_detail_route = get(modules::user::handler::get_user)
         .put(modules::user::handler::update_user)
         .delete(modules::user::handler::delete_user)
-        .route_layer(auth_layer);
+        .route_layer(auth_layer.clone());
+    let rbac_roles_route = get(modules::rbac::handler::list_roles).route_layer(auth_layer.clone());
+    let rbac_permissions_route =
+        get(modules::rbac::handler::list_permissions).route_layer(auth_layer.clone());
+    let rbac_user_route =
+        get(modules::rbac::handler::get_user_access).route_layer(auth_layer.clone());
+    let rbac_user_roles_route =
+        post(modules::rbac::handler::assign_user_role).route_layer(auth_layer);
 
     Router::new()
         .route("/health", get(health::health))
@@ -46,6 +53,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/users/me", me_route)
         .route("/users", users_route)
         .route("/users/{id}", user_detail_route)
+        .route("/rbac/roles", rbac_roles_route)
+        .route("/rbac/permissions", rbac_permissions_route)
+        .route("/rbac/users/{id}", rbac_user_route)
+        .route("/rbac/users/{id}/roles", rbac_user_roles_route)
         .route("/external/ip", get(modules::external::handler::fetch_ip))
         .layer(middleware::from_fn(inject_request_id))
         .layer(TraceLayer::new_for_http())

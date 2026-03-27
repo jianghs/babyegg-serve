@@ -6,6 +6,10 @@ pub mod authorization;
 pub mod catalog;
 /// 访问上下文模型。
 pub mod context;
+/// RBAC HTTP 请求/响应模型。
+pub mod dto;
+/// RBAC HTTP 处理器。
+pub mod handler;
 /// 角色与权限键常量。
 pub mod keys;
 /// RBAC 业务服务。

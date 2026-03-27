@@ -2,6 +2,24 @@ use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct RoleRecord {
+    pub role_key: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PermissionRecord {
+    pub permission_key: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct UserRoleRecord {
+    pub role_key: String,
+    pub description: String,
+}
+
 /// 查询数据库中现存的全部角色键。
 ///
 /// 主要用于校验 seed 或测试断言。
@@ -9,6 +27,19 @@ pub async fn list_role_keys(db: &PgPool) -> Result<Vec<String>, sqlx::Error> {
     sqlx::query_scalar::<_, String>(
         r#"
         SELECT role_key
+        FROM roles
+        ORDER BY role_key
+        "#,
+    )
+    .fetch_all(db)
+    .await
+}
+
+/// 查询数据库中全部角色及其描述。
+pub async fn list_roles(db: &PgPool) -> Result<Vec<RoleRecord>, sqlx::Error> {
+    sqlx::query_as::<_, RoleRecord>(
+        r#"
+        SELECT role_key, description
         FROM roles
         ORDER BY role_key
         "#,
@@ -32,6 +63,19 @@ pub async fn list_permission_keys(db: &PgPool) -> Result<Vec<String>, sqlx::Erro
     .await
 }
 
+/// 查询数据库中全部权限及其描述。
+pub async fn list_permissions(db: &PgPool) -> Result<Vec<PermissionRecord>, sqlx::Error> {
+    sqlx::query_as::<_, PermissionRecord>(
+        r#"
+        SELECT permission_key, description
+        FROM permissions
+        ORDER BY permission_key
+        "#,
+    )
+    .fetch_all(db)
+    .await
+}
+
 /// 查询角色与权限的绑定关系。
 ///
 /// 返回的元组结构为 `(role_key, permission_key)`。
@@ -45,6 +89,26 @@ pub async fn list_role_permission_pairs(db: &PgPool) -> Result<Vec<(String, Stri
         ORDER BY r.role_key, p.permission_key
         "#,
     )
+    .fetch_all(db)
+    .await
+}
+
+/// 查询某个角色对应的全部权限键。
+pub async fn list_permissions_by_role_key(
+    db: &PgPool,
+    role_key: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT p.permission_key
+        FROM role_permissions rp
+        JOIN roles r ON r.id = rp.role_id
+        JOIN permissions p ON p.id = rp.permission_id
+        WHERE r.role_key = $1
+        ORDER BY p.permission_key
+        "#,
+    )
+    .bind(role_key)
     .fetch_all(db)
     .await
 }
@@ -89,6 +153,25 @@ pub async fn assign_role_by_key(
     .await?;
 
     Ok(true)
+}
+
+/// 查询用户显式绑定的角色及描述。
+pub async fn list_user_roles(
+    db: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<UserRoleRecord>, sqlx::Error> {
+    sqlx::query_as::<_, UserRoleRecord>(
+        r#"
+        SELECT r.role_key, r.description
+        FROM user_roles ur
+        JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = $1
+        ORDER BY r.role_key
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await
 }
 
 /// 查询用户角色与权限，用于动态生成 JWT claims。

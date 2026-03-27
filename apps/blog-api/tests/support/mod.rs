@@ -8,6 +8,8 @@ use axum::Router;
 use blog_api::{
     app,
     config::{AppConfig, AuthConfig},
+    db::rbac_repo,
+    modules::rbac::keys::RoleKey,
     state::AppState,
 };
 use http::{Method, StatusCode};
@@ -183,6 +185,17 @@ pub async fn refresh_session(app: Router, refresh_token: &str) -> AuthSession {
             .expect("missing refreshed refresh_token")
             .to_string(),
     }
+}
+
+#[allow(dead_code)]
+/// 直接在数据库中授予管理员角色，并通过 refresh 获取带新 claims 的会话。
+pub async fn promote_to_admin(app: Router, db: &PgPool, session: AuthSession) -> AuthSession {
+    let assigned = rbac_repo::assign_role_by_key(db, session.user_id, RoleKey::ADMIN)
+        .await
+        .expect("assign admin role failed");
+    assert!(assigned, "admin role seed not found");
+
+    refresh_session(app, &session.refresh_token).await
 }
 
 #[allow(dead_code)]
