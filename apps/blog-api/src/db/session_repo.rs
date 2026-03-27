@@ -2,13 +2,20 @@ use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+/// refresh token 会话记录。
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SessionRecord {
+    /// 会话 ID。
     pub id: Uuid,
+    /// 所属用户 ID。
     pub user_id: Uuid,
+    /// 原始 refresh token。
     pub refresh_token: String,
+    /// 会话过期时间。
     pub expires_at: OffsetDateTime,
+    /// 会话创建时间。
     pub created_at: OffsetDateTime,
+    /// 会话撤销时间；未撤销时为空。
     pub revoked_at: Option<OffsetDateTime>,
 }
 
@@ -91,6 +98,8 @@ pub async fn revoke_refresh_token(db: &PgPool, refresh_token: &str) -> Result<bo
 }
 
 /// 列出指定用户的全部 refresh token 会话。
+///
+/// 返回结果按创建时间倒序排列，便于调用方优先展示最近会话。
 pub async fn list_sessions_by_user_id(
     db: &PgPool,
     user_id: Uuid,
@@ -109,6 +118,8 @@ pub async fn list_sessions_by_user_id(
 }
 
 /// 撤销指定用户的某个会话。
+///
+/// 仅当会话属于指定用户且此前未撤销时，返回 `true`。
 pub async fn revoke_session_by_id(
     db: &PgPool,
     user_id: Uuid,
@@ -135,6 +146,8 @@ pub async fn revoke_session_by_id(
 }
 
 /// 撤销指定用户的全部有效会话。
+///
+/// 返回本次实际撤销的会话数量。
 pub async fn revoke_all_sessions_by_user_id(
     db: &PgPool,
     user_id: Uuid,

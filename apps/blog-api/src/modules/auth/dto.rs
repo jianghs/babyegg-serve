@@ -162,6 +162,7 @@ pub struct TokenResponse {
 
 #[derive(Debug, Serialize)]
 pub struct RevokeAllSessionsResponse {
+    /// 本次实际撤销的会话数量。
     pub revoked_sessions: u64,
 }
 

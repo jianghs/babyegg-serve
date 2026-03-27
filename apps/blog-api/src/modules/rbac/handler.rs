@@ -16,6 +16,7 @@ use crate::{
     state::AppState,
 };
 
+/// 处理查询角色定义列表请求。
 pub async fn list_roles(
     State(state): State<AppState>,
     Extension(current_user): Extension<AccessContext>,
@@ -25,6 +26,7 @@ pub async fn list_roles(
     Ok(Json(ApiResponse::ok(roles)))
 }
 
+/// 处理查询权限定义列表请求。
 pub async fn list_permissions(
     State(state): State<AppState>,
     Extension(current_user): Extension<AccessContext>,
@@ -34,6 +36,7 @@ pub async fn list_permissions(
     Ok(Json(ApiResponse::ok(permissions)))
 }
 
+/// 处理查询用户访问上下文请求。
 pub async fn get_user_access(
     State(state): State<AppState>,
     Extension(current_user): Extension<AccessContext>,
@@ -44,6 +47,7 @@ pub async fn get_user_access(
     Ok(Json(ApiResponse::ok(access)))
 }
 
+/// 处理给用户分配角色请求。
 pub async fn assign_user_role(
     State(state): State<AppState>,
     Extension(current_user): Extension<AccessContext>,

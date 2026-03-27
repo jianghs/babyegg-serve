@@ -9,7 +9,7 @@ use crate::{
             AssignUserRoleRequest, PermissionResponse, RoleResponse, UserAccessResponse,
             UserRoleResponse,
         },
-        keys::RoleKey,
+        keys::{Permission, Role, RoleKey},
     },
     state::AppState,
 };
@@ -88,9 +88,18 @@ pub async fn list_roles(state: &AppState) -> Result<Vec<RoleResponse>, AppError>
                 )
             })?;
         responses.push(RoleResponse {
-            role_key: role.role_key,
+            role_key: Role::from_key(&role.role_key).ok_or(AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            ))?,
             description: role.description,
-            permissions,
+            permissions: permissions
+                .into_iter()
+                .map(|permission| {
+                    Permission::from_key(&permission).ok_or(AppError::InternalWithMessage(
+                        translate(locale, MessageKey::InternalServerError).to_string(),
+                    ))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
         });
     }
 
@@ -106,13 +115,19 @@ pub async fn list_permissions(state: &AppState) -> Result<Vec<PermissionResponse
         )
     })?;
 
-    Ok(permissions
+    permissions
         .into_iter()
-        .map(|permission| PermissionResponse {
-            permission_key: permission.permission_key,
-            description: permission.description,
+        .map(|permission| {
+            Ok(PermissionResponse {
+                permission_key: Permission::from_key(&permission.permission_key).ok_or(
+                    AppError::InternalWithMessage(
+                        translate(locale, MessageKey::InternalServerError).to_string(),
+                    ),
+                )?,
+                description: permission.description,
+            })
         })
-        .collect())
+        .collect::<Result<Vec<_>, _>>()
 }
 
 /// 查询某个用户当前的角色与权限。
@@ -147,12 +162,25 @@ pub async fn get_user_access(
         user_id: user_id.to_string(),
         roles: roles
             .into_iter()
-            .map(|role| UserRoleResponse {
-                role_key: role.role_key,
-                description: role.description,
+            .map(|role| {
+                Ok(UserRoleResponse {
+                    role_key: Role::from_key(&role.role_key).ok_or(
+                        AppError::InternalWithMessage(
+                            translate(locale, MessageKey::InternalServerError).to_string(),
+                        ),
+                    )?,
+                    description: role.description,
+                })
             })
-            .collect(),
-        scopes,
+            .collect::<Result<Vec<_>, _>>()?,
+        scopes: scopes
+            .into_iter()
+            .map(|scope| {
+                Permission::from_key(&scope).ok_or(AppError::InternalWithMessage(
+                    translate(locale, MessageKey::InternalServerError).to_string(),
+                ))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
     })
 }
 
