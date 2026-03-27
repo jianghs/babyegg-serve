@@ -42,7 +42,7 @@ pub fn build_router(state: AppState) -> Router {
     let rbac_user_route =
         get(modules::rbac::handler::get_user_access).route_layer(auth_layer.clone());
     let rbac_user_roles_route =
-        post(modules::rbac::handler::assign_user_role).route_layer(auth_layer);
+        post(modules::rbac::handler::assign_user_role).route_layer(auth_layer.clone());
 
     Router::new()
         .route("/health", get(health::health))
@@ -50,6 +50,19 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/login", post(modules::auth::handler::login))
         .route("/auth/refresh", post(modules::auth::handler::refresh))
         .route("/auth/logout", post(modules::auth::handler::logout))
+        .route(
+            "/auth/sessions",
+            get(modules::auth::handler::list_sessions).route_layer(auth_layer.clone()),
+        )
+        .route(
+            "/auth/sessions/revoke-all",
+            post(modules::auth::handler::revoke_all_sessions).route_layer(auth_layer.clone()),
+        )
+        .route(
+            "/auth/sessions/{id}",
+            axum::routing::delete(modules::auth::handler::revoke_session)
+                .route_layer(auth_layer.clone()),
+        )
         .route("/users/me", me_route)
         .route("/users", users_route)
         .route("/users/{id}", user_detail_route)

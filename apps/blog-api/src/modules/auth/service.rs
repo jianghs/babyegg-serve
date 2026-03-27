@@ -2,12 +2,17 @@
 
 use app_foundation::i18n::{translate, MessageKey};
 use app_foundation::{AppError, ErrorCode};
+use time::OffsetDateTime;
+use uuid::Uuid;
 
 use crate::{
     db::session_repo,
     modules::{
         auth::{
-            dto::{LoginRequest, LoginResponse, LogoutRequest, RefreshRequest, TokenResponse},
+            dto::{
+                LoginRequest, LoginResponse, LogoutRequest, RefreshRequest,
+                RevokeAllSessionsResponse, SessionResponse, TokenResponse,
+            },
             jwt,
         },
         identity, rbac,
@@ -120,10 +125,7 @@ pub async fn logout(state: &AppState, req: LogoutRequest) -> Result<(), AppError
 /// 生成访问令牌与刷新令牌，并持久化刷新会话。
 ///
 /// 该函数内部会根据 RBAC 当前状态动态构建 JWT 中的角色与权限声明。
-async fn issue_token_pair(
-    state: &AppState,
-    user_id: uuid::Uuid,
-) -> Result<TokenResponse, AppError> {
+async fn issue_token_pair(state: &AppState, user_id: Uuid) -> Result<TokenResponse, AppError> {
     let locale = state.config.base.default_locale;
     let (roles, scopes) = rbac::service::build_claims(state, user_id).await?;
 
@@ -144,7 +146,32 @@ async fn issue_token_pair(
     let refresh_expires_at = time::OffsetDateTime::now_utc()
         + time::Duration::seconds(state.config.auth.refresh_token_ttl_seconds);
 
-    session_repo::create_refresh_token(&state.db, user_id, &refresh_token, refresh_expires_at)
+    let session_id =
+        session_repo::create_refresh_token(&state.db, user_id, &refresh_token, refresh_expires_at)
+            .await
+            .map_err(|_| {
+                AppError::InternalWithMessage(
+                    translate(locale, MessageKey::InternalServerError).to_string(),
+                )
+            })?;
+
+    Ok(TokenResponse {
+        session_id,
+        access_token,
+        refresh_token,
+        token_type: "Bearer".to_string(),
+        expires_in: state.config.auth.access_token_ttl_seconds,
+        refresh_expires_in: state.config.auth.refresh_token_ttl_seconds,
+    })
+}
+
+/// 列出当前用户的全部会话。
+pub async fn list_sessions(
+    state: &AppState,
+    user_id: Uuid,
+) -> Result<Vec<SessionResponse>, AppError> {
+    let locale = state.config.base.default_locale;
+    let sessions = session_repo::list_sessions_by_user_id(&state.db, user_id)
         .await
         .map_err(|_| {
             AppError::InternalWithMessage(
@@ -152,11 +179,70 @@ async fn issue_token_pair(
             )
         })?;
 
-    Ok(TokenResponse {
-        access_token,
-        refresh_token,
-        token_type: "Bearer".to_string(),
-        expires_in: state.config.auth.access_token_ttl_seconds,
-        refresh_expires_in: state.config.auth.refresh_token_ttl_seconds,
-    })
+    Ok(sessions
+        .into_iter()
+        .map(|session| {
+            let now = OffsetDateTime::now_utc();
+            SessionResponse {
+                id: session.id,
+                user_id: session.user_id,
+                created_at: session
+                    .created_at
+                    .format(&time::format_description::well_known::Rfc3339)
+                    .expect("invalid created_at"),
+                expires_at: session
+                    .expires_at
+                    .format(&time::format_description::well_known::Rfc3339)
+                    .expect("invalid expires_at"),
+                revoked_at: session.revoked_at.map(|value| {
+                    value
+                        .format(&time::format_description::well_known::Rfc3339)
+                        .expect("invalid revoked_at")
+                }),
+                is_active: session.revoked_at.is_none() && session.expires_at > now,
+            }
+        })
+        .collect())
+}
+
+/// 撤销当前用户的指定会话。
+pub async fn revoke_session(
+    state: &AppState,
+    user_id: Uuid,
+    session_id: Uuid,
+) -> Result<(), AppError> {
+    let locale = state.config.base.default_locale;
+    let revoked = session_repo::revoke_session_by_id(&state.db, user_id, session_id)
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?;
+
+    if !revoked {
+        return Err(AppError::BadRequestWithCode(
+            ErrorCode::AuthInvalidRefreshToken,
+            translate(locale, MessageKey::InvalidRefreshToken).to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+/// 撤销当前用户的全部有效会话。
+pub async fn revoke_all_sessions(
+    state: &AppState,
+    user_id: Uuid,
+) -> Result<RevokeAllSessionsResponse, AppError> {
+    let locale = state.config.base.default_locale;
+    let revoked_sessions = session_repo::revoke_all_sessions_by_user_id(&state.db, user_id)
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?;
+
+    Ok(RevokeAllSessionsResponse { revoked_sessions })
 }

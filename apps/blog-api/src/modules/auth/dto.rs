@@ -1,6 +1,7 @@
 use app_foundation::i18n::{translate, MessageKey};
 use app_foundation::{AppError, ErrorCode, Locale, ValidationDetail, ValidationReason};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::modules::identity::model::UserResponse;
 
@@ -120,6 +121,23 @@ impl LogoutRequest {
     }
 }
 
+/// 当前用户某个 refresh token 会话的响应模型。
+#[derive(Debug, Serialize)]
+pub struct SessionResponse {
+    /// 会话 ID。
+    pub id: Uuid,
+    /// 会话所属用户 ID。
+    pub user_id: Uuid,
+    /// 会话创建时间。
+    pub created_at: String,
+    /// 会话过期时间。
+    pub expires_at: String,
+    /// 会话撤销时间；未撤销时为空。
+    pub revoked_at: Option<String>,
+    /// 当前会话是否仍可用于 refresh。
+    pub is_active: bool,
+}
+
 /// Token 响应。
 ///
 /// 该结构表示一次认证成功后返回的一组令牌：
@@ -128,6 +146,8 @@ impl LogoutRequest {
 /// - `expires_in` / `refresh_expires_in`：相对当前响应时间的剩余秒数
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
+    /// refresh token 会话 ID。
+    pub session_id: Uuid,
     /// 短期访问令牌。
     pub access_token: String,
     /// 长期刷新令牌。
@@ -138,6 +158,11 @@ pub struct TokenResponse {
     pub expires_in: i64,
     /// refresh token 过期秒数。
     pub refresh_expires_in: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RevokeAllSessionsResponse {
+    pub revoked_sessions: u64,
 }
 
 /// 登录响应。
