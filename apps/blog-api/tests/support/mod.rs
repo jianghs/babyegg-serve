@@ -3,7 +3,11 @@
 //! 这里封装了应用构建、临时数据库初始化、认证会话创建与测试数据清理，
 //! 以减少各测试文件中的重复样板代码。
 
-use std::{ops::Deref, str::FromStr, sync::Once};
+use std::{
+    ops::Deref,
+    str::FromStr,
+    sync::{Arc, Once, OnceLock},
+};
 
 use app_foundation::logging::init_tracing;
 use app_testkit::request_json;
@@ -21,10 +25,15 @@ use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     ConnectOptions, Executor, PgPool,
 };
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::{info, warn};
 use uuid::Uuid;
 
 static TEST_LOGGING_INIT: Once = Once::new();
+static SHARED_TEST_DB: OnceLock<tokio::sync::OnceCell<Arc<SharedTestDatabase>>> = OnceLock::new();
+static DB_TEST_PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+static TEST_DB_CLEANUP: OnceLock<(String, String)> = OnceLock::new();
+static TEST_DB_ATEXIT_INIT: Once = Once::new();
 
 fn init_test_logging() {
     TEST_LOGGING_INIT.call_once(init_tracing);
@@ -44,22 +53,31 @@ pub struct AuthSession {
     pub refresh_token: String,
 }
 
+#[derive(Debug)]
+struct SharedTestDatabase {
+    database_url: String,
+}
+
+impl SharedTestDatabase {
+    fn new(database_url: String) -> Self {
+        Self { database_url }
+    }
+}
+
 /// 测试期间使用的临时数据库句柄。
 ///
-/// 该结构在 drop 时会自动关闭连接池并删除临时数据库。
+/// 同一个测试进程内会复用同一套临时数据库；最后一个引用释放时自动删库。
 #[derive(Debug)]
 pub struct TestDatabase {
     pool: PgPool,
-    admin_database_url: String,
-    database_name: String,
+    _permit: OwnedSemaphorePermit,
 }
 
 impl TestDatabase {
-    fn new(pool: PgPool, admin_database_url: String, database_name: String) -> Self {
+    fn new(pool: PgPool, permit: OwnedSemaphorePermit) -> Self {
         Self {
             pool,
-            admin_database_url,
-            database_name,
+            _permit: permit,
         }
     }
 }
@@ -69,52 +87,6 @@ impl Deref for TestDatabase {
 
     fn deref(&self) -> &Self::Target {
         &self.pool
-    }
-}
-
-impl Drop for TestDatabase {
-    fn drop(&mut self) {
-        let pool = self.pool.clone();
-        let admin_database_url = self.admin_database_url.clone();
-        let database_name = self.database_name.clone();
-
-        std::thread::spawn(move || {
-            let runtime = tokio::runtime::Runtime::new().expect("create cleanup runtime failed");
-            runtime.block_on(async move {
-                let admin_pool = match PgPoolOptions::new()
-                    .max_connections(1)
-                    .connect(&admin_database_url)
-                    .await
-                {
-                    Ok(pool) => pool,
-                    Err(err) => {
-                        warn!(error = %err, database = %database_name, "skip cleanup: cannot connect admin database");
-                        return;
-                    }
-                };
-
-                let terminate_sql = format!(
-                    r#"
-                    SELECT pg_terminate_backend(pid)
-                    FROM pg_stat_activity
-                    WHERE datname = '{database_name}'
-                      AND pid <> pg_backend_pid()
-                    "#
-                );
-                if let Err(err) = admin_pool.execute(terminate_sql.as_str()).await {
-                    warn!(error = %err, database = %database_name, "cleanup warning: cannot terminate active connections");
-                }
-
-                let drop_sql = format!(r#"DROP DATABASE IF EXISTS "{database_name}""#);
-                if let Err(err) = admin_pool.execute(drop_sql.as_str()).await {
-                    warn!(error = %err, database = %database_name, "cleanup warning: cannot drop temporary database");
-                }
-
-                drop(pool);
-            });
-        })
-        .join()
-        .expect("temporary database cleanup thread panicked");
     }
 }
 
@@ -166,35 +138,16 @@ pub fn setup_app_lazy() -> (Router, AppConfig) {
 /// 若数据库不可用，则返回 `None` 以便测试自行跳过。
 pub async fn setup_app_with_db() -> Option<(Router, AppConfig, TestDatabase)> {
     let mut config = test_config();
-    let (admin_database_url, test_database_url, database_name) =
-        match build_temp_database_urls(&config.database_url) {
-            Ok(urls) => urls,
-            Err(err) => {
-                warn!(error = %err, "skip test: invalid database url");
-                return None;
-            }
-        };
-
-    let admin_pool = match PgPoolOptions::new()
-        .max_connections(1)
-        .connect(&admin_database_url)
+    let permit = db_test_permit_pool()
+        .clone()
+        .acquire_owned()
         .await
-    {
-        Ok(pool) => pool,
-        Err(err) => {
-            warn!(error = %err, "skip test: cannot connect admin database");
-            return None;
-        }
+        .expect("db test semaphore closed");
+    let shared = match get_or_init_shared_test_db(&config.database_url).await {
+        Some(shared) => shared,
+        None => return None,
     };
-
-    let create_sql = format!(r#"CREATE DATABASE "{database_name}""#);
-    if let Err(err) = admin_pool.execute(create_sql.as_str()).await {
-        warn!(error = %err, database = %database_name, "skip test: cannot create temporary database");
-        return None;
-    }
-
-    config.database_url = test_database_url;
-
+    config.database_url = shared.database_url.clone();
     let pool = match PgPoolOptions::new()
         .max_connections(5)
         .connect(&config.database_url)
@@ -202,51 +155,15 @@ pub async fn setup_app_with_db() -> Option<(Router, AppConfig, TestDatabase)> {
     {
         Ok(pool) => pool,
         Err(err) => {
-            warn!(error = %err, database = %database_name, "skip test: cannot connect temporary database");
+            warn!(error = %err, "skip test: cannot connect shared temporary database");
             return None;
         }
     };
-
-    let db_identity = match sqlx::query_as::<_, (Option<String>, Option<i32>, String, String)>(
-        r#"
-        SELECT
-            inet_server_addr()::text,
-            inet_server_port(),
-            current_database(),
-            current_user
-        "#,
-    )
-    .fetch_one(&pool)
-    .await
-    {
-        Ok(identity) => identity,
-        Err(err) => {
-            warn!(error = %err, "skip test: cannot inspect database identity");
-            return None;
-        }
-    };
-
-    info!(
-        addr = ?db_identity.0,
-        port = ?db_identity.1,
-        database = %db_identity.2,
-        user = %db_identity.3,
-        "temporary test db connected"
-    );
-
-    if let Err(err) = sqlx::migrate!("./migrations").run(&pool).await {
-        warn!(error = %err, "skip test: cannot run migrations");
-        return None;
-    }
 
     let state = AppState::new(pool.clone(), config.clone());
     let app = app::build_router(state);
 
-    Some((
-        app,
-        config,
-        TestDatabase::new(pool, admin_database_url, database_name),
-    ))
+    Some((app, config, TestDatabase::new(pool, permit)))
 }
 
 #[allow(dead_code)]
@@ -408,4 +325,128 @@ fn build_temp_database_urls(database_url: &str) -> Result<(String, String, Strin
         .to_string();
 
     Ok((admin_database_url, test_database_url, database_name))
+}
+
+fn shared_test_db_slot() -> &'static tokio::sync::OnceCell<Arc<SharedTestDatabase>> {
+    SHARED_TEST_DB.get_or_init(tokio::sync::OnceCell::const_new)
+}
+
+fn db_test_permit_pool() -> &'static Arc<Semaphore> {
+    DB_TEST_PERMITS.get_or_init(|| Arc::new(Semaphore::new(1)))
+}
+
+async fn get_or_init_shared_test_db(database_url: &str) -> Option<Arc<SharedTestDatabase>> {
+    let shared = shared_test_db_slot()
+        .get_or_try_init(|| async move {
+            let (admin_database_url, test_database_url, database_name) =
+                build_temp_database_urls(database_url)?;
+
+            let admin_pool = PgPoolOptions::new()
+                .max_connections(1)
+                .connect(&admin_database_url)
+                .await?;
+
+            let create_sql = format!(r#"CREATE DATABASE "{database_name}""#);
+            admin_pool.execute(create_sql.as_str()).await?;
+
+            let pool = PgPoolOptions::new()
+                .max_connections(5)
+                .connect(&test_database_url)
+                .await?;
+
+            let db_identity = sqlx::query_as::<_, (Option<String>, Option<i32>, String, String)>(
+                r#"
+                    SELECT
+                        inet_server_addr()::text,
+                        inet_server_port(),
+                        current_database(),
+                        current_user
+                    "#,
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            info!(
+                addr = ?db_identity.0,
+                port = ?db_identity.1,
+                database = %db_identity.2,
+                user = %db_identity.3,
+                "temporary test db connected"
+            );
+
+            sqlx::migrate!("./migrations").run(&pool).await?;
+
+            let _ = TEST_DB_CLEANUP.set((admin_database_url.clone(), database_name.clone()));
+            register_test_db_atexit();
+
+            pool.close().await;
+
+            Ok::<Arc<SharedTestDatabase>, sqlx::Error>(Arc::new(SharedTestDatabase::new(
+                test_database_url,
+            )))
+        })
+        .await;
+
+    match shared {
+        Ok(db) => Some(db.clone()),
+        Err(err) => {
+            warn!(error = %err, "skip test: cannot initialize shared temporary database");
+            None
+        }
+    }
+}
+
+fn register_test_db_atexit() {
+    TEST_DB_ATEXIT_INIT.call_once(|| unsafe {
+        unsafe extern "C" {
+            fn atexit(cb: extern "C" fn());
+        }
+
+        atexit(cleanup_shared_test_db);
+    });
+}
+
+extern "C" fn cleanup_shared_test_db() {
+    let Some((admin_database_url, database_name)) = TEST_DB_CLEANUP.get() else {
+        return;
+    };
+
+    let admin_database_url = admin_database_url.clone();
+    let database_name = database_name.clone();
+
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Runtime::new().expect("create cleanup runtime failed");
+        runtime.block_on(async move {
+            let admin_pool = match PgPoolOptions::new()
+                .max_connections(1)
+                .connect(&admin_database_url)
+                .await
+            {
+                Ok(pool) => pool,
+                Err(err) => {
+                    warn!(error = %err, database = %database_name, "skip cleanup: cannot connect admin database");
+                    return;
+                }
+            };
+
+            let terminate_sql = format!(
+                r#"
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = '{database_name}'
+                  AND pid <> pg_backend_pid()
+                "#
+            );
+            if let Err(err) = admin_pool.execute(terminate_sql.as_str()).await {
+                warn!(error = %err, database = %database_name, "cleanup warning: cannot terminate active connections");
+            }
+
+            let drop_sql = format!(r#"DROP DATABASE IF EXISTS "{database_name}""#);
+            if let Err(err) = admin_pool.execute(drop_sql.as_str()).await {
+                warn!(error = %err, database = %database_name, "cleanup warning: cannot drop temporary database");
+            }
+        });
+    })
+    .join()
+    .expect("temporary database cleanup thread panicked");
 }
