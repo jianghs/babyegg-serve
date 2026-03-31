@@ -1,9 +1,9 @@
 //! blog-api 集成测试的公共辅助函数。
 //!
-//! 这里封装了应用构建、数据库初始化、认证会话创建与测试数据清理，
+//! 这里封装了应用构建、临时数据库初始化、认证会话创建与测试数据清理，
 //! 以减少各测试文件中的重复样板代码。
 
-use std::sync::Once;
+use std::{ops::Deref, str::FromStr, sync::Once};
 
 use app_foundation::logging::init_tracing;
 use app_testkit::request_json;
@@ -17,7 +17,10 @@ use blog_api::{
 };
 use http::{Method, StatusCode};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{
+    postgres::{PgConnectOptions, PgPoolOptions},
+    ConnectOptions, Executor, PgPool,
+};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -39,6 +42,80 @@ pub struct AuthSession {
     pub access_token: String,
     /// refresh token。
     pub refresh_token: String,
+}
+
+/// 测试期间使用的临时数据库句柄。
+///
+/// 该结构在 drop 时会自动关闭连接池并删除临时数据库。
+#[derive(Debug)]
+pub struct TestDatabase {
+    pool: PgPool,
+    admin_database_url: String,
+    database_name: String,
+}
+
+impl TestDatabase {
+    fn new(pool: PgPool, admin_database_url: String, database_name: String) -> Self {
+        Self {
+            pool,
+            admin_database_url,
+            database_name,
+        }
+    }
+}
+
+impl Deref for TestDatabase {
+    type Target = PgPool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.pool
+    }
+}
+
+impl Drop for TestDatabase {
+    fn drop(&mut self) {
+        let pool = self.pool.clone();
+        let admin_database_url = self.admin_database_url.clone();
+        let database_name = self.database_name.clone();
+
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new().expect("create cleanup runtime failed");
+            runtime.block_on(async move {
+                let admin_pool = match PgPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&admin_database_url)
+                    .await
+                {
+                    Ok(pool) => pool,
+                    Err(err) => {
+                        warn!(error = %err, database = %database_name, "skip cleanup: cannot connect admin database");
+                        return;
+                    }
+                };
+
+                let terminate_sql = format!(
+                    r#"
+                    SELECT pg_terminate_backend(pid)
+                    FROM pg_stat_activity
+                    WHERE datname = '{database_name}'
+                      AND pid <> pg_backend_pid()
+                    "#
+                );
+                if let Err(err) = admin_pool.execute(terminate_sql.as_str()).await {
+                    warn!(error = %err, database = %database_name, "cleanup warning: cannot terminate active connections");
+                }
+
+                let drop_sql = format!(r#"DROP DATABASE IF EXISTS "{database_name}""#);
+                if let Err(err) = admin_pool.execute(drop_sql.as_str()).await {
+                    warn!(error = %err, database = %database_name, "cleanup warning: cannot drop temporary database");
+                }
+
+                drop(pool);
+            });
+        })
+        .join()
+        .expect("temporary database cleanup thread panicked");
+    }
 }
 
 /// 构造测试使用的应用配置。
@@ -87,17 +164,45 @@ pub fn setup_app_lazy() -> (Router, AppConfig) {
 /// 连接测试数据库、执行迁移并返回可用应用。
 ///
 /// 若数据库不可用，则返回 `None` 以便测试自行跳过。
-pub async fn setup_app_with_db() -> Option<(Router, AppConfig, PgPool)> {
-    let config = test_config();
+pub async fn setup_app_with_db() -> Option<(Router, AppConfig, TestDatabase)> {
+    let mut config = test_config();
+    let (admin_database_url, test_database_url, database_name) =
+        match build_temp_database_urls(&config.database_url) {
+            Ok(urls) => urls,
+            Err(err) => {
+                warn!(error = %err, "skip test: invalid database url");
+                return None;
+            }
+        };
 
-    let pool = match sqlx::postgres::PgPoolOptions::new()
+    let admin_pool = match PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&admin_database_url)
+        .await
+    {
+        Ok(pool) => pool,
+        Err(err) => {
+            warn!(error = %err, "skip test: cannot connect admin database");
+            return None;
+        }
+    };
+
+    let create_sql = format!(r#"CREATE DATABASE "{database_name}""#);
+    if let Err(err) = admin_pool.execute(create_sql.as_str()).await {
+        warn!(error = %err, database = %database_name, "skip test: cannot create temporary database");
+        return None;
+    }
+
+    config.database_url = test_database_url;
+
+    let pool = match PgPoolOptions::new()
         .max_connections(5)
         .connect(&config.database_url)
         .await
     {
         Ok(pool) => pool,
         Err(err) => {
-            warn!(error = %err, "skip test: cannot connect database");
+            warn!(error = %err, database = %database_name, "skip test: cannot connect temporary database");
             return None;
         }
     };
@@ -126,7 +231,7 @@ pub async fn setup_app_with_db() -> Option<(Router, AppConfig, PgPool)> {
         port = ?db_identity.1,
         database = %db_identity.2,
         user = %db_identity.3,
-        "test db connected"
+        "temporary test db connected"
     );
 
     if let Err(err) = sqlx::migrate!("./migrations").run(&pool).await {
@@ -137,7 +242,11 @@ pub async fn setup_app_with_db() -> Option<(Router, AppConfig, PgPool)> {
     let state = AppState::new(pool.clone(), config.clone());
     let app = app::build_router(state);
 
-    Some((app, config, pool))
+    Some((
+        app,
+        config,
+        TestDatabase::new(pool, admin_database_url, database_name),
+    ))
 }
 
 #[allow(dead_code)]
@@ -283,4 +392,20 @@ pub async fn expire_session(db: &PgPool, session_id: Uuid) {
     .execute(db)
     .await
     .expect("expire session failed");
+}
+
+fn build_temp_database_urls(database_url: &str) -> Result<(String, String, String), sqlx::Error> {
+    let base_options = PgConnectOptions::from_str(database_url)?.disable_statement_logging();
+    let database_name = format!("blog_api_test_{}", Uuid::new_v4().simple());
+    let admin_database_url = base_options
+        .clone()
+        .database("postgres")
+        .to_url_lossy()
+        .to_string();
+    let test_database_url = base_options
+        .database(&database_name)
+        .to_url_lossy()
+        .to_string();
+
+    Ok((admin_database_url, test_database_url, database_name))
 }

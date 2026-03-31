@@ -37,7 +37,7 @@ async fn user_should_list_and_revoke_sessions() {
     let password = "secret123";
     let session = support::register_and_login(app.clone(), "session-user", &email, password).await;
 
-    let session_id = request_json(
+    let second_login = request_json(
         app.clone(),
         Method::POST,
         "/auth/login",
@@ -46,12 +46,23 @@ async fn user_should_list_and_revoke_sessions() {
             "password": password
         }),
     )
-    .await
-    .1["data"]["token"]["session_id"]
+    .await;
+    assert_eq!(
+        second_login.0,
+        StatusCode::OK,
+        "login body: {}",
+        second_login.1
+    );
+
+    let session_id = second_login.1["data"]["token"]["session_id"]
         .as_str()
         .expect("missing session id")
         .parse::<Uuid>()
         .expect("invalid session id");
+    let second_refresh_token = second_login.1["data"]["token"]["refresh_token"]
+        .as_str()
+        .expect("missing refresh token")
+        .to_string();
 
     let (list_status, list_body) = request_empty_json_with_auth(
         app.clone(),
@@ -83,7 +94,7 @@ async fn user_should_list_and_revoke_sessions() {
         app.clone(),
         Method::POST,
         "/auth/refresh",
-        json!({ "refresh_token": session.refresh_token }),
+        json!({ "refresh_token": second_refresh_token }),
     )
     .await;
     assert_eq!(
