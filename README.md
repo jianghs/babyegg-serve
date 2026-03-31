@@ -53,7 +53,9 @@ rust-platform-template/
 - 授权域：`AccessContext`、RBAC 持久化、动态 claims、角色/权限矩阵
 - RBAC 管理：管理员查询角色/权限、查询用户访问上下文、分配/撤销用户角色
 - Refresh Token 轮换与登出撤销
+- 博文 CRUD 与 Markdown 正文存储
 - 用户 CRUD 与分页查询
+- 博文列表支持分页、白名单排序、按 `title` / `slug` 模糊过滤与按 `published` 过滤
 - 用户列表支持分页、白名单排序和按 `name` / `email` 模糊过滤
 - 认证中间件注入 `rbac::context::AccessContext`
 - RBAC 持久化：`roles` / `permissions` / `user_roles` / `role_permissions`
@@ -81,6 +83,12 @@ rust-platform-template/
 - `DELETE /auth/sessions/{id}`（需要 Bearer Token）
 - `POST /auth/sessions/revoke-all`（需要 Bearer Token）
 - `GET /users/me`（需要 Bearer Token）
+- `POST /posts`（需要 Bearer Token + `posts:write`）
+- `GET /posts?page=1&page_size=10&sort=...&order=...&filter=...&published=...`（需要 Bearer Token + `posts:read`）
+- `GET /posts/{id}`（需要 Bearer Token + `posts:read`）
+- `GET /posts/slug/{slug}`（需要 Bearer Token + `posts:read`）
+- `PUT /posts/{id}`（需要 Bearer Token + `posts:write`）
+- `DELETE /posts/{id}`（需要 Bearer Token + `posts:write`）
 - `POST /users`（需要 Bearer Token + `users:write`）
 - `GET /users?page=1&page_size=10&sort=...&order=...&filter=...`（需要 Bearer Token + `users:read`）
 - `GET /users/{id}`（需要 Bearer Token + `users:read`）
@@ -103,6 +111,7 @@ rust-platform-template/
 - 注册并登录获取测试会话
 - refresh 获取新测试会话
 - 提升测试用户为管理员
+- 测试博文清理
 - 强制测试会话过期
 - 测试用户清理
 

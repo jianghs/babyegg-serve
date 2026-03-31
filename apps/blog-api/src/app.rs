@@ -32,10 +32,19 @@ pub fn build_router(state: AppState) -> Router {
     let users_route = post(modules::user::handler::create_user)
         .get(modules::user::handler::list_users)
         .route_layer(auth_layer.clone());
+    let posts_route = post(modules::post::handler::create_post)
+        .get(modules::post::handler::list_posts)
+        .route_layer(auth_layer.clone());
     let user_detail_route = get(modules::user::handler::get_user)
         .put(modules::user::handler::update_user)
         .delete(modules::user::handler::delete_user)
         .route_layer(auth_layer.clone());
+    let post_detail_route = get(modules::post::handler::get_post)
+        .put(modules::post::handler::update_post)
+        .delete(modules::post::handler::delete_post)
+        .route_layer(auth_layer.clone());
+    let post_slug_route =
+        get(modules::post::handler::get_post_by_slug).route_layer(auth_layer.clone());
     let rbac_roles_route = get(modules::rbac::handler::list_roles).route_layer(auth_layer.clone());
     let rbac_permissions_route =
         get(modules::rbac::handler::list_permissions).route_layer(auth_layer.clone());
@@ -67,6 +76,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/users/me", me_route)
         .route("/users", users_route)
         .route("/users/{id}", user_detail_route)
+        .route("/posts", posts_route)
+        .route("/posts/{id}", post_detail_route)
+        .route("/posts/slug/{slug}", post_slug_route)
         .route("/rbac/roles", rbac_roles_route)
         .route("/rbac/permissions", rbac_permissions_route)
         .route("/rbac/users/{id}", rbac_user_route)

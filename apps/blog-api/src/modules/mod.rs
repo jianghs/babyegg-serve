@@ -6,6 +6,8 @@ pub mod auth;
 pub mod external;
 /// 身份域模块。
 pub mod identity;
+/// 博文资源模块。
+pub mod post;
 /// 授权与 RBAC 模块。
 pub mod rbac;
 /// 用户资源模块。

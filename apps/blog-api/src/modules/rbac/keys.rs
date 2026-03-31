@@ -36,6 +36,10 @@ impl Role {
 pub struct PermissionKey;
 
 impl PermissionKey {
+    /// 读取博文资源权限。
+    pub const POSTS_READ: &'static str = "posts:read";
+    /// 写入博文资源权限。
+    pub const POSTS_WRITE: &'static str = "posts:write";
     /// 读取用户资源权限。
     pub const USERS_READ: &'static str = "users:read";
     /// 写入用户资源权限。
@@ -47,6 +51,12 @@ impl PermissionKey {
 /// 对外暴露的权限键枚举。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Permission {
+    /// 读取博文资源权限。
+    #[serde(rename = "posts:read")]
+    PostsRead,
+    /// 写入博文资源权限。
+    #[serde(rename = "posts:write")]
+    PostsWrite,
     /// 读取用户资源权限。
     #[serde(rename = "users:read")]
     UsersRead,
@@ -62,6 +72,8 @@ impl Permission {
     /// 按稳定字符串键解析权限枚举。
     pub fn from_key(value: &str) -> Option<Self> {
         match value {
+            PermissionKey::POSTS_READ => Some(Self::PostsRead),
+            PermissionKey::POSTS_WRITE => Some(Self::PostsWrite),
             PermissionKey::USERS_READ => Some(Self::UsersRead),
             PermissionKey::USERS_WRITE => Some(Self::UsersWrite),
             PermissionKey::WILDCARD => Some(Self::Wildcard),

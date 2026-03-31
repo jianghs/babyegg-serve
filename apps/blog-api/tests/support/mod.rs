@@ -296,6 +296,18 @@ pub async fn delete_users(db: &PgPool, user_ids: &[Uuid]) {
 }
 
 #[allow(dead_code)]
+/// 删除指定博文，供集成测试清理数据使用。
+pub async fn delete_posts(db: &PgPool, post_ids: &[Uuid]) {
+    for post_id in post_ids {
+        sqlx::query("DELETE FROM posts WHERE id = $1")
+            .bind(*post_id)
+            .execute(db)
+            .await
+            .expect("cleanup post failed");
+    }
+}
+
+#[allow(dead_code)]
 /// 将指定会话直接标记为已过期，供集成测试验证会话状态展示。
 pub async fn expire_session(db: &PgPool, session_id: Uuid) {
     sqlx::query(
