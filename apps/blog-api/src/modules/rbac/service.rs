@@ -6,8 +6,8 @@ use crate::{
     db::{rbac_repo, user_repo},
     modules::rbac::{
         dto::{
-            AssignUserRoleRequest, PermissionResponse, RoleResponse, UserAccessResponse,
-            UserRoleResponse,
+            AssignUserRoleRequest, PermissionResponse, RevokeUserRoleRequest, RoleResponse,
+            UserAccessResponse, UserRoleResponse,
         },
         keys::{Permission, Role, RoleKey},
     },
@@ -217,6 +217,45 @@ pub async fn assign_user_role(
         return Err(AppError::BadRequestWithCode(
             ErrorCode::InvalidParam,
             "invalid role_key".to_string(),
+        ));
+    }
+
+    get_user_access(state, user_id).await
+}
+
+/// 撤销指定用户的角色，并返回更新后的角色与权限。
+pub async fn revoke_user_role(
+    state: &AppState,
+    user_id: Uuid,
+    req: RevokeUserRoleRequest,
+) -> Result<UserAccessResponse, AppError> {
+    let locale = state.config.base.default_locale;
+    req.validate(locale)?;
+
+    let user_exists = user_repo::get_user(&state.db, user_id).await.map_err(|_| {
+        AppError::InternalWithMessage(
+            translate(locale, MessageKey::InternalServerError).to_string(),
+        )
+    })?;
+    if user_exists.is_none() {
+        return Err(AppError::NotFoundWithCode(
+            ErrorCode::NotFound,
+            translate(locale, MessageKey::NotFound).to_string(),
+        ));
+    }
+
+    let revoked = rbac_repo::revoke_role_by_key(&state.db, user_id, req.role_key.trim())
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?;
+
+    if !revoked {
+        return Err(AppError::BadRequestWithCode(
+            ErrorCode::InvalidParam,
+            "invalid role_key or role not assigned".to_string(),
         ));
     }
 

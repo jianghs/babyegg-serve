@@ -155,6 +155,47 @@ pub async fn assign_role_by_key(
     Ok(true)
 }
 
+/// 撤销用户绑定的指定角色（通过 role_key）。
+///
+/// 返回值语义：
+/// - `Ok(true)`：角色存在，且本次成功删除了一条用户角色绑定
+/// - `Ok(false)`：指定 `role_key` 不存在，或该用户当前并未绑定该角色
+pub async fn revoke_role_by_key(
+    db: &PgPool,
+    user_id: Uuid,
+    role_key: &str,
+) -> Result<bool, sqlx::Error> {
+    let role_id = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT id
+        FROM roles
+        WHERE role_key = $1
+        LIMIT 1
+        "#,
+    )
+    .bind(role_key)
+    .fetch_optional(db)
+    .await?;
+
+    let Some(role_id) = role_id else {
+        return Ok(false);
+    };
+
+    let result = sqlx::query(
+        r#"
+        DELETE FROM user_roles
+        WHERE user_id = $1
+          AND role_id = $2
+        "#,
+    )
+    .bind(user_id)
+    .bind(role_id)
+    .execute(db)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
 /// 查询用户显式绑定的角色及描述。
 pub async fn list_user_roles(
     db: &PgPool,

@@ -31,6 +31,8 @@ fn init_test_logging() {
 /// 测试过程中可复用的一组认证会话信息。
 #[derive(Debug, Clone)]
 pub struct AuthSession {
+    /// 当前 refresh token 会话 ID。
+    pub session_id: Uuid,
     /// 当前登录用户 ID。
     pub user_id: Uuid,
     /// access token。
@@ -179,6 +181,11 @@ pub async fn register_and_login(
     assert_eq!(login_status, StatusCode::OK, "login body: {login_body}");
 
     AuthSession {
+        session_id: login_body["data"]["token"]["session_id"]
+            .as_str()
+            .expect("missing session_id")
+            .parse::<Uuid>()
+            .expect("invalid session_id"),
         user_id: login_body["data"]["user"]["id"]
             .as_str()
             .expect("missing user.id")
@@ -214,6 +221,11 @@ pub async fn refresh_session(app: Router, refresh_token: &str) -> AuthSession {
     );
 
     AuthSession {
+        session_id: refresh_body["data"]["token"]["session_id"]
+            .as_str()
+            .expect("missing refreshed session_id")
+            .parse::<Uuid>()
+            .expect("invalid refreshed session_id"),
         user_id: refresh_body["data"]["user"]["id"]
             .as_str()
             .expect("missing user.id")
@@ -255,4 +267,20 @@ pub async fn delete_users(db: &PgPool, user_ids: &[Uuid]) {
             .await
             .expect("cleanup user failed");
     }
+}
+
+#[allow(dead_code)]
+/// 将指定会话直接标记为已过期，供集成测试验证会话状态展示。
+pub async fn expire_session(db: &PgPool, session_id: Uuid) {
+    sqlx::query(
+        r#"
+        UPDATE refresh_tokens
+        SET expires_at = NOW() - INTERVAL '1 minute'
+        WHERE id = $1
+        "#,
+    )
+    .bind(session_id)
+    .execute(db)
+    .await
+    .expect("expire session failed");
 }

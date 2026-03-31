@@ -71,3 +71,32 @@ impl AssignUserRoleRequest {
         Ok(())
     }
 }
+
+/// 撤销用户角色请求。
+#[derive(Debug, Deserialize)]
+pub struct RevokeUserRoleRequest {
+    /// 待撤销的角色键。
+    pub role_key: String,
+}
+
+impl RevokeUserRoleRequest {
+    /// 校验角色撤销请求。
+    pub fn validate(&self, locale: Locale) -> Result<(), AppError> {
+        if self.role_key.trim().is_empty() {
+            return Err(AppError::BadRequestWithDetails(
+                ErrorCode::InvalidParam,
+                if matches!(locale, Locale::ZhCn) {
+                    "role_key 不能为空".to_string()
+                } else {
+                    "role_key cannot be empty".to_string()
+                },
+                vec![ValidationDetail::new(
+                    "role_key",
+                    ValidationReason::Required,
+                )],
+            ));
+        }
+
+        Ok(())
+    }
+}

@@ -11,7 +11,9 @@ use crate::{
     modules::{
         identity,
         user::{
-            dto::{CreateUserRequest, UpdateUserRequest, UserListResponse},
+            dto::{
+                CreateUserRequest, NormalizedUserListQuery, UpdateUserRequest, UserListResponse,
+            },
             model::UserResponse,
         },
     },
@@ -76,15 +78,10 @@ pub async fn me(state: &AppState, user_id: Uuid) -> Result<UserResponse, AppErro
 /// - `page_size` 范围被限制在 `1..=100`
 pub async fn list_users(
     state: &AppState,
-    page: i64,
-    page_size: i64,
+    query: NormalizedUserListQuery,
 ) -> Result<UserListResponse, AppError> {
     let locale = state.config.base.default_locale;
-
-    let page = page.max(1);
-    let page_size = page_size.clamp(1, 100);
-
-    let items = user_repo::list_users(&state.db, page, page_size)
+    let items = user_repo::list_users(&state.db, &query)
         .await
         .map_err(|_| {
             AppError::InternalWithMessage(
@@ -95,13 +92,15 @@ pub async fn list_users(
         .map(UserResponse::from)
         .collect();
 
-    let total = user_repo::count_users(&state.db).await.map_err(|_| {
-        AppError::InternalWithMessage(
-            translate(locale, MessageKey::InternalServerError).to_string(),
-        )
-    })?;
+    let total = user_repo::count_users(&state.db, query.filter.as_deref())
+        .await
+        .map_err(|_| {
+            AppError::InternalWithMessage(
+                translate(locale, MessageKey::InternalServerError).to_string(),
+            )
+        })?;
 
-    Ok(PageResponse::new(items, page, page_size, total))
+    Ok(PageResponse::new(items, query.page, query.page_size, total))
 }
 
 /// 更新指定用户的显示名。

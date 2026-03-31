@@ -13,7 +13,7 @@
 
 ### `modules/auth`
 - 只负责认证会话流程。
-- 包含 `login` / `refresh` / `logout`、JWT provider、认证中间件和 HTTP DTO/handler。
+- 包含 `login` / `refresh` / `logout`、会话管理、JWT provider、认证中间件和 HTTP DTO/handler。
 - 不再负责注册用户，也不再承载授权上下文类型。
 
 ### `modules/rbac`
@@ -41,6 +41,14 @@
 - `users:read` 用于读取用户资源。
 - `users:write` 用于创建、更新、删除用户资源。
 - `admin` 角色当前通过 `*` 权限获得全部访问能力。
+- `/rbac/*` 管理接口当前要求 `admin` 角色。
+- `/rbac/users/{id}/roles` 同时支持角色分配与角色撤销。
+
+### 会话管理
+- `/auth/sessions` 用于列出当前用户全部 refresh token 会话。
+- `/auth/sessions/{id}` 用于撤销当前用户某个指定会话。
+- `/auth/sessions/revoke-all` 用于撤销当前用户全部有效会话。
+- 会话列表会返回 `is_active`，根据 `revoked_at` 与 `expires_at` 动态计算。
 
 ## 测试资产
 ### `crates/app-testkit`
@@ -62,13 +70,22 @@
 ## 当前测试覆盖
 - `login_and_refresh_should_issue_dynamic_claims_from_rbac`
 - `users_routes_should_require_auth_and_enforce_scopes`
+- `users_list_should_support_sort_order_and_filter`
 - `rbac_seed_should_match_code_keys`
+- `rbac_management_routes_should_require_admin_role`
+- `admin_should_manage_user_roles_and_access`
+- `session_routes_should_require_auth`
+- `user_should_list_and_revoke_sessions`
+- `revoke_all_sessions_should_invalidate_all_refresh_tokens`
 - `health_endpoint_returns_ok`
 
 这些测试共同覆盖了：
 - 注册、登录、refresh token 轮换
 - RBAC claims 动态刷新
+- RBAC 管理接口的管理员边界、角色分配与撤销
+- 会话列表、单会话撤销、全量撤销
 - users 资源接口的读写权限
+- users 列表分页、排序与过滤
 - RBAC seed 与代码常量/矩阵的一致性
 
 ## 后续扩展建议

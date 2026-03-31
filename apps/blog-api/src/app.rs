@@ -41,8 +41,9 @@ pub fn build_router(state: AppState) -> Router {
         get(modules::rbac::handler::list_permissions).route_layer(auth_layer.clone());
     let rbac_user_route =
         get(modules::rbac::handler::get_user_access).route_layer(auth_layer.clone());
-    let rbac_user_roles_route =
-        post(modules::rbac::handler::assign_user_role).route_layer(auth_layer.clone());
+    let rbac_user_roles_route = post(modules::rbac::handler::assign_user_role)
+        .delete(modules::rbac::handler::revoke_user_role)
+        .route_layer(auth_layer.clone());
 
     Router::new()
         .route("/health", get(health::health))

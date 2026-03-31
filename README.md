@@ -49,9 +49,12 @@ rust-platform-template/
 
 - 身份域：用户注册、用户创建、密码哈希与凭证校验
 - 认证域：登录、refresh token 轮换、登出撤销、JWT 签发与校验
+- 认证会话管理：列出当前用户会话、撤销单个会话、撤销全部会话
 - 授权域：`AccessContext`、RBAC 持久化、动态 claims、角色/权限矩阵
+- RBAC 管理：管理员查询角色/权限、查询用户访问上下文、分配/撤销用户角色
 - Refresh Token 轮换与登出撤销
 - 用户 CRUD 与分页查询
+- 用户列表支持分页、白名单排序和按 `name` / `email` 模糊过滤
 - 认证中间件注入 `rbac::context::AccessContext`
 - RBAC 持久化：`roles` / `permissions` / `user_roles` / `role_permissions`
 - 授权能力：`require_role` / `require_scope`
@@ -74,12 +77,20 @@ rust-platform-template/
 - `POST /auth/login`
 - `POST /auth/refresh`
 - `POST /auth/logout`
+- `GET /auth/sessions`（需要 Bearer Token）
+- `DELETE /auth/sessions/{id}`（需要 Bearer Token）
+- `POST /auth/sessions/revoke-all`（需要 Bearer Token）
 - `GET /users/me`（需要 Bearer Token）
 - `POST /users`（需要 Bearer Token + `users:write`）
 - `GET /users?page=1&page_size=10&sort=...&order=...&filter=...`（需要 Bearer Token + `users:read`）
 - `GET /users/{id}`（需要 Bearer Token + `users:read`）
 - `PUT /users/{id}`（需要 Bearer Token + `users:write`）
 - `DELETE /users/{id}`（需要 Bearer Token + `users:write`）
+- `GET /rbac/roles`（需要 Bearer Token + `admin`）
+- `GET /rbac/permissions`（需要 Bearer Token + `admin`）
+- `GET /rbac/users/{id}`（需要 Bearer Token + `admin`）
+- `POST /rbac/users/{id}/roles`（需要 Bearer Token + `admin`）
+- `DELETE /rbac/users/{id}/roles`（需要 Bearer Token + `admin`）
 - `GET /external/ip`
 
 ## 3.1 测试辅助入口
@@ -91,6 +102,8 @@ rust-platform-template/
 - app/db 初始化
 - 注册并登录获取测试会话
 - refresh 获取新测试会话
+- 提升测试用户为管理员
+- 强制测试会话过期
 - 测试用户清理
 
 ## 4. 接口时序图

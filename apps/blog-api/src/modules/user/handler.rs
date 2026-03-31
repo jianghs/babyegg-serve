@@ -66,15 +66,16 @@ pub async fn me(
 ///
 /// 对应 `GET /users`。
 /// 查询参数会先归一化为默认 `page = 1`、`page_size = 10`，并将页容量限制在 `100` 以内。
+/// 同时支持对白名单字段排序，以及按 `name` / `email` 做模糊过滤。
 pub async fn list_users(
     State(state): State<AppState>,
     Extension(current_user): Extension<AccessContext>,
     Query(query): Query<UserListQuery>,
 ) -> Result<Json<ApiResponse<UserListResponse>>, AppError> {
     authorization::require_scope(&state, &current_user, PermissionKey::USERS_READ)?;
-    let normalized = query.normalize(1, 10, 100);
+    let normalized = query.normalize(state.config.base.default_locale, 1, 10, 100)?;
 
-    let result = service::list_users(&state, normalized.page, normalized.page_size).await?;
+    let result = service::list_users(&state, normalized).await?;
     Ok(Json(ApiResponse::ok(result)))
 }
 

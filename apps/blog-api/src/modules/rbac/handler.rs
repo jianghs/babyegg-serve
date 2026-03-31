@@ -9,7 +9,10 @@ use crate::{
     modules::rbac::{
         authorization,
         context::AccessContext,
-        dto::{AssignUserRoleRequest, PermissionResponse, RoleResponse, UserAccessResponse},
+        dto::{
+            AssignUserRoleRequest, PermissionResponse, RevokeUserRoleRequest, RoleResponse,
+            UserAccessResponse,
+        },
         keys::RoleKey,
         service,
     },
@@ -56,5 +59,17 @@ pub async fn assign_user_role(
 ) -> Result<Json<ApiResponse<UserAccessResponse>>, AppError> {
     authorization::require_role(&state, &current_user, RoleKey::ADMIN)?;
     let access = service::assign_user_role(&state, user_id, req).await?;
+    Ok(Json(ApiResponse::ok(access)))
+}
+
+/// 处理撤销用户角色请求。
+pub async fn revoke_user_role(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<AccessContext>,
+    Path(user_id): Path<Uuid>,
+    Json(req): Json<RevokeUserRoleRequest>,
+) -> Result<Json<ApiResponse<UserAccessResponse>>, AppError> {
+    authorization::require_role(&state, &current_user, RoleKey::ADMIN)?;
+    let access = service::revoke_user_role(&state, user_id, req).await?;
     Ok(Json(ApiResponse::ok(access)))
 }

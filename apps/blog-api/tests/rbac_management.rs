@@ -162,6 +162,60 @@ async fn admin_should_manage_user_roles_and_access() {
         Some(managed_user_id_str.as_str())
     );
 
+    let (revoke_status, revoke_body) = request_json_with_auth(
+        app.clone(),
+        Method::DELETE,
+        &format!("/rbac/users/{managed_user_id}/roles"),
+        json!({ "role_key": "admin" }),
+        Some(&refreshed_admin.access_token),
+    )
+    .await;
+    assert_eq!(revoke_status, StatusCode::OK, "revoke body: {revoke_body}");
+    assert!(
+        revoke_body["data"]["roles"]
+            .as_array()
+            .expect("roles should be array")
+            .iter()
+            .all(|role| role["role_key"] != "admin"),
+        "revoke body: {revoke_body}"
+    );
+    assert!(
+        revoke_body["data"]["scopes"]
+            .as_array()
+            .expect("scopes should be array")
+            .iter()
+            .all(|scope| scope != "*"),
+        "revoke body: {revoke_body}"
+    );
+
+    let (revoke_missing_role_status, revoke_missing_role_body) = request_json_with_auth(
+        app.clone(),
+        Method::DELETE,
+        &format!("/rbac/users/{managed_user_id}/roles"),
+        json!({ "role_key": "admin" }),
+        Some(&refreshed_admin.access_token),
+    )
+    .await;
+    assert_eq!(
+        revoke_missing_role_status,
+        StatusCode::BAD_REQUEST,
+        "revoke missing role body: {revoke_missing_role_body}"
+    );
+
+    let (reassign_status, reassign_body) = request_json_with_auth(
+        app.clone(),
+        Method::POST,
+        &format!("/rbac/users/{managed_user_id}/roles"),
+        json!({ "role_key": "admin" }),
+        Some(&refreshed_admin.access_token),
+    )
+    .await;
+    assert_eq!(
+        reassign_status,
+        StatusCode::OK,
+        "reassign body: {reassign_body}"
+    );
+
     let (invalid_role_status, invalid_role_body) = request_json_with_auth(
         app.clone(),
         Method::POST,
